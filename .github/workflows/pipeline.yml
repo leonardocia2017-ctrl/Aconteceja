@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: aconteceja-pipeline
@@ -26,7 +27,22 @@ jobs:
       NEWS_LIMIT: "10"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        id: google-auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: aconteceja-automacao
+          workload_identity_provider: projects/798640632443/locations/global/workloadIdentityPools/aconteceja-github/providers/github-actions
+          service_account: aconteceja-github@aconteceja-automacao.iam.gserviceaccount.com
+
+      - name: Confirm Google authentication
+        run: |
+          test -n "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -f "$GOOGLE_APPLICATION_CREDENTIALS"
+          echo "Google Cloud OIDC authentication established."
+
       - name: Node
         uses: actions/setup-node@v4
         with:
