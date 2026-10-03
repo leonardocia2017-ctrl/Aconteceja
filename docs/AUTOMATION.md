@@ -10,3 +10,6 @@ O workflow `.github/workflows/pipeline.yml` executa validação, testes e o pipe
 
 ## Próxima etapa
 Após validação dos cards e da seleção editorial, adicionar armazenamento persistente/URL pública para a mídia e integrar o publicador. Credenciais devem entrar somente por GitHub Secrets, nunca no repositório.
+
+
+Última verificação do gatilho: pipeline seguro configurado na branch main.
