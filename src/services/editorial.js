@@ -1,9 +1,10 @@
 const CATEGORY_RULES = {
   politica: ["governo","congresso","senado","camara","presidente","eleicao","eleitoral","ministro","prefeito","governador"],
-  economia: ["economia","mercado","inflacao","juros","dolar","real","ibovespa","emprego","pib","banco"],
-  tecnologia: ["tecnologia","inteligencia artificial","ia","software","aplicativo","internet","google","apple","microsoft"],
+  economia: ["economia","mercado","inflacao","juros","dolar","ibovespa","emprego","pib","banco","bancos","credito","financeiro"],
+  tecnologia: ["tecnologia","inteligencia artificial","software","aplicativo","internet","google","apple","microsoft","computador","chip"],
   esportes: ["futebol","brasileirao","libertadores","copa","gol","jogo","selecao","formula 1","tenis"],
   entretenimento: ["cinema","filme","serie","musica","show","festival","ator","atriz","cantor"],
+  clima: ["clima","el nino","la nina","chuva","tempestade","furacao","ciclone","seca","calor","frio","meteorologia"],
   mundo: ["eua","estados unidos","europa","china","ucrania","russia","israel","onu","internacional"]
 };
 
@@ -15,6 +16,11 @@ export function normalize(value="") {
 
 function tokens(title) {
   return new Set(normalize(title).split(" ").filter(w => w.length > 3 && !STOP.has(w)));
+}
+
+function containsTerm(text, term) {
+  const normalizedTerm=normalize(term);
+  return (` ${text} `).includes(` ${normalizedTerm} `);
 }
 
 export function similarity(a,b) {
@@ -29,7 +35,7 @@ export function categorize(item) {
   const text=normalize(`${item.title} ${item.summary ?? ""}`);
   let best={category:"geral",hits:0};
   for (const [category,terms] of Object.entries(CATEGORY_RULES)) {
-    const hits=terms.filter(term=>text.includes(normalize(term))).length;
+    const hits=terms.filter(term=>containsTerm(text,term)).length;
     if (hits>best.hits) best={category,hits};
   }
   return best.category;
