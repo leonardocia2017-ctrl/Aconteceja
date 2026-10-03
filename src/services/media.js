@@ -8,7 +8,7 @@ function escapeXml(value="") {
   return value.replace(/[<>&'"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;","'":"&apos;",'"':"&quot;"}[c]));
 }
 
-function wrap(text, max=32) {
+function wrap(text, max=30) {
   const words=(text ?? "").trim().split(/\s+/), lines=[]; let line="";
   for (const word of words) {
     const next=line ? `${line} ${word}` : word;
@@ -18,21 +18,31 @@ function wrap(text, max=32) {
   return lines.slice(0,6);
 }
 
+const ACCENTS={politica:"#D94A4A",economia:"#35A56F",tecnologia:"#4C8DFF",esportes:"#F0A33A",entretenimento:"#B56CFF",clima:"#35A9C9",mundo:"#E06F47",geral:"#E5E7EB"};
+
 export async function createMedia(post) {
   await mkdir(OUT_DIR,{recursive:true});
   const lines=wrap(post.title);
   if (!lines.length) throw new Error("Título ausente: mídia não pode ser criada.");
-  const title=lines.map((l,i)=>`<tspan x="80" dy="${i===0?0:76}">${escapeXml(l)}</tspan>`).join("");
+  const category=(post.category ?? "geral").toLowerCase();
+  const accent=ACCENTS[category] ?? ACCENTS.geral;
+  const title=lines.map((l,i)=>`<tspan x="80" dy="${i===0?0:72}">${escapeXml(l)}</tspan>`).join("");
   const svg=`<svg width="1080" height="1350" xmlns="http://www.w3.org/2000/svg">
-    <rect width="1080" height="1350" fill="#101114"/>
-    <text x="80" y="110" font-family="Arial,sans-serif" font-size="44" font-weight="700" fill="white">ACONTECE JÁ</text>
-    <text x="80" y="230" font-family="Arial,sans-serif" font-size="30" fill="#d7d7d7">${escapeXml((post.category ?? "GERAL").toUpperCase())}</text>
-    <text x="80" y="420" font-family="Arial,sans-serif" font-size="62" font-weight="700" fill="white">${title}</text>
-    <text x="80" y="1260" font-family="Arial,sans-serif" font-size="28" fill="#bdbdbd">Fonte: ${escapeXml(post.source ?? "Fonte original")}</text>
+    <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B0D12"/><stop offset="1" stop-color="#171B24"/></linearGradient></defs>
+    <rect width="1080" height="1350" fill="url(#bg)"/>
+    <rect x="0" y="0" width="18" height="1350" fill="${accent}"/>
+    <rect x="80" y="76" width="62" height="8" rx="4" fill="${accent}"/>
+    <text x="80" y="142" font-family="Arial,sans-serif" font-size="46" font-weight="700" fill="white">ACONTECE JÁ</text>
+    <rect x="80" y="205" width="240" height="54" rx="27" fill="${accent}"/>
+    <text x="106" y="242" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="#0B0D12">${escapeXml(category.toUpperCase())}</text>
+    <text x="80" y="400" font-family="Arial,sans-serif" font-size="58" font-weight="700" fill="white">${title}</text>
+    <line x1="80" y1="1190" x2="1000" y2="1190" stroke="#3A3F4B" stroke-width="2"/>
+    <text x="80" y="1250" font-family="Arial,sans-serif" font-size="27" fill="#B9C0CC">Fonte: ${escapeXml(post.source ?? "Fonte original")}</text>
+    <text x="1000" y="1250" text-anchor="end" font-family="Arial,sans-serif" font-size="24" fill="#7F8794">aconteceja</text>
   </svg>`;
   const slug=Buffer.from(post.sourceUrl ?? post.title).toString("base64url").slice(0,24);
   const filePath=path.join(OUT_DIR,`${slug}.jpg`);
-  await sharp(Buffer.from(svg)).jpeg({quality:90}).toFile(filePath);
+  await sharp(Buffer.from(svg)).jpeg({quality:92}).toFile(filePath);
   const info=await stat(filePath);
   if (!info.isFile() || info.size<1000) throw new Error("Arquivo de mídia inválido.");
   return {type:"image/jpeg",path:filePath,width:1080,height:1350,size:info.size,alt:post.title};
