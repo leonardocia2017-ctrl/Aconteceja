@@ -1,0 +1,48 @@
+name: Acontece Ja Pipeline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aconteceja-pipeline
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DRY_RUN: "true"
+      NEWS_LOOKBACK_HOURS: "24"
+      NEWS_LIMIT: "10"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Syntax check
+        run: npm run check
+      - name: Tests
+        run: npm test
+      - name: Run safe pipeline
+        run: npm start
+      - name: Preserve generated media
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aconteceja-media
+          path: output/media/
+          if-no-files-found: ignore
+          retention-days: 3
