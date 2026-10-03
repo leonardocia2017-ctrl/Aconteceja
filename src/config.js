@@ -4,5 +4,7 @@ export const config = {
   newsLimit: Number(process.env.NEWS_LIMIT ?? 10),
   metricoolToken: process.env.METRICOOL_TOKEN ?? "",
   metricoolUserId: process.env.METRICOOL_USER_ID ?? "",
-  metricoolBlogId: process.env.METRICOOL_BLOG_ID ?? ""
+  metricoolBlogId: process.env.METRICOOL_BLOG_ID ?? "",
+  metricoolMediaBaseUrl: process.env.METRICOOL_MEDIA_BASE_URL ?? "",
+  metricoolAutoPublish: (process.env.METRICOOL_AUTO_PUBLISH ?? "false").toLowerCase() === "true"
 };
