@@ -1,4 +1,5 @@
 import { mkdir, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import sharp from "sharp";
 
@@ -40,7 +41,7 @@ export async function createMedia(post) {
     <text x="80" y="1250" font-family="Arial,sans-serif" font-size="27" fill="#B9C0CC">Fonte: ${escapeXml(post.source ?? "Fonte original")}</text>
     <text x="1000" y="1250" text-anchor="end" font-family="Arial,sans-serif" font-size="24" fill="#7F8794">aconteceja</text>
   </svg>`;
-  const slug=Buffer.from(post.sourceUrl ?? post.title).toString("base64url").slice(0,24);
+  const slug=createHash("sha256").update(post.sourceUrl ?? post.title).digest("hex");
   const filePath=path.join(OUT_DIR,`${slug}.jpg`);
   await sharp(Buffer.from(svg)).jpeg({quality:92}).toFile(filePath);
   const info=await stat(filePath);
