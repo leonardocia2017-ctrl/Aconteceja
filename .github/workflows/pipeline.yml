@@ -2,6 +2,12 @@ name: Acontece Ja Pipeline
 
 on:
   workflow_dispatch:
+    inputs:
+      media_probe:
+        description: "Testar somente upload/validação da ponte GCS (sem publicar)"
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
   schedule:
@@ -25,6 +31,8 @@ jobs:
       DRY_RUN: "true"
       NEWS_LOOKBACK_HOURS: "24"
       NEWS_LIMIT: "10"
+      METRICOOL_MEDIA_BUCKET: ${{ vars.METRICOOL_MEDIA_BUCKET }}
+      METRICOOL_MEDIA_BASE_URL: ${{ vars.METRICOOL_MEDIA_BASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -54,7 +62,22 @@ jobs:
       - name: Tests
         run: npm test
       - name: Run safe pipeline
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.media_probe != true }}
         run: npm start
+
+      - name: Probe GCS media bridge (no social publication)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.media_probe == true }}
+        env:
+          DRY_RUN: "false"
+          METRICOOL_AUTO_PUBLISH: "true"
+        run: |
+          node --input-type=module <<'NODE'
+          import { createMedia } from "./src/services/media.js";
+          import { materializeMediaForMetricool } from "./src/services/publisher.js";
+          const media = await createMedia({title:"Teste técnico de mídia — não publicar",category:"geral",source:"Acontece Já",sourceUrl:`probe://${process.env.GITHUB_RUN_ID}`});
+          const ready = await materializeMediaForMetricool(media,{upload:true});
+          console.log("MEDIA_BRIDGE_OK", ready.publicUrl, ready.size);
+          NODE
       - name: Preserve generated media
         if: always()
         uses: actions/upload-artifact@v4
