@@ -6,5 +6,6 @@ export const config = {
   metricoolUserId: process.env.METRICOOL_USER_ID ?? "",
   metricoolBlogId: process.env.METRICOOL_BLOG_ID ?? "",
   metricoolMediaBaseUrl: process.env.METRICOOL_MEDIA_BASE_URL ?? "",
+  metricoolMediaBucket: process.env.METRICOOL_MEDIA_BUCKET ?? "",
   metricoolAutoPublish: (process.env.METRICOOL_AUTO_PUBLISH ?? "false").toLowerCase() === "true"
 };
