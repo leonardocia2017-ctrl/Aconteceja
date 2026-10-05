@@ -7,6 +7,7 @@ const OWNER="leonardocia2017-ctrl";
 const REPO="Aconteceja";
 const MEDIA_BRANCH="media";
 const MEDIA_DIR="media";
+const METRICOOL_API_BASE=(process.env.METRICOOL_API_BASE_URL ?? "https://app.metricool.com/api").replace(/\/$/,"");
 
 function githubToken() {
   const token=process.env.GITHUB_TOKEN;
@@ -15,7 +16,7 @@ function githubToken() {
 }
 
 async function githubApi(url,options={}) {
-  const response=await fetch(url,{
+  return fetch(url,{
     ...options,
     headers:{
       Accept:"application/vnd.github+json",
@@ -24,7 +25,6 @@ async function githubApi(url,options={}) {
       ...(options.headers??{})
     }
   });
-  return response;
 }
 
 async function ensureMediaBranch() {
@@ -52,12 +52,7 @@ async function uploadToGitHub(filename,bytes) {
   else if (existing.status!==404) throw new Error(`Publicação bloqueada: falha ao consultar mídia existente (HTTP ${existing.status}).`);
   const response=await githubApi(apiUrl,{
     method:"PUT",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      message:`media: materialize ${filename}`,
-      content:bytes.toString("base64"),
-      branch:MEDIA_BRANCH,
-      ...(sha?{sha}:{})
-    })
+    body:JSON.stringify({message:`media: materialize ${filename}`,content:bytes.toString("base64"),branch:MEDIA_BRANCH,...(sha?{sha}:{})})
   });
   if (!response.ok) throw new Error(`Publicação bloqueada: upload GitHub falhou (HTTP ${response.status}).`);
   return `https://raw.githubusercontent.com/${OWNER}/${REPO}/refs/heads/${MEDIA_BRANCH}/${MEDIA_DIR}/${encodeURIComponent(filename)}`;
@@ -83,6 +78,54 @@ export async function materializeMediaForMetricool(media,{upload=false}={}) {
   return {...media,filename,publicUrl,bytes};
 }
 
+function metricoolCredentials() {
+  if (!config.metricoolToken || !config.metricoolUserId || !config.metricoolBlogId) {
+    throw new Error("Publicação bloqueada: METRICOOL_TOKEN, METRICOOL_USER_ID e METRICOOL_BLOG_ID são obrigatórios.");
+  }
+  return {token:config.metricoolToken,userId:config.metricoolUserId,blogId:config.metricoolBlogId};
+}
+
+function publicationDate(post) {
+  const requested=post.publicationDate ?? process.env.METRICOOL_PUBLICATION_DATE;
+  if (!requested) throw new Error("Publicação bloqueada: publicationDate é obrigatória; não será inventado horário de publicação.");
+  const date=new Date(requested);
+  if (Number.isNaN(date.getTime())) throw new Error("Publicação bloqueada: publicationDate inválida.");
+  return date.toISOString();
+}
+
+function metricoolPayload(post,mediaUrl) {
+  const when=publicationDate(post);
+  return {
+    text:post.caption ?? post.title,
+    media:[mediaUrl],
+    providers:[{network:"instagram"}],
+    publicationDate:when,
+    autoPublish:true,
+    draft:false,
+    shortener:false,
+    instagramData:{type:post.instagramType ?? "POST",collaborators:[],showReelOnFeed:true,isAiGenerated:true}
+  };
+}
+
+async function metricoolCreateScheduledPost(post,mediaUrl) {
+  const {token,userId,blogId}=metricoolCredentials();
+  const payload=metricoolPayload(post,mediaUrl);
+  const url=`${METRICOOL_API_BASE}/v2/scheduler/posts?userId=${encodeURIComponent(userId)}&blogId=${encodeURIComponent(blogId)}`;
+  const response=await fetch(url,{
+    method:"POST",
+    headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json",Accept:"application/json"},
+    body:JSON.stringify(payload)
+  });
+  const raw=await response.text();
+  let body={};
+  try { body=raw?JSON.parse(raw):{}; } catch { body={raw}; }
+  if (!response.ok) throw new Error(`Publicação bloqueada: Metricool rejeitou a solicitação (HTTP ${response.status}).`);
+  const metricoolId=body.id ?? body.postId ?? body.data?.id;
+  const uuid=body.uuid ?? body.data?.uuid;
+  if (!metricoolId) throw new Error("Resultado UNKNOWN: Metricool respondeu sem ID; não reenviar automaticamente. Reconciliar primeiro.");
+  return {status:"scheduled",metricoolId,uuid:uuid??null,providerStatus:body.providers?.[0]?.status ?? body.status ?? "PENDING",response:body};
+}
+
 export async function publishPost(post,{dryRun=true}={}) {
   if (dryRun) {
     assertPublishableMedia(post.media);
@@ -91,5 +134,6 @@ export async function publishPost(post,{dryRun=true}={}) {
   }
   const media=await materializeMediaForMetricool(post.media,{upload:true});
   if (!config.metricoolAutoPublish) throw new Error("Publicação bloqueada: METRICOOL_AUTO_PUBLISH não está habilitado.");
-  return {status:"media-ready",mediaValidated:true,mediaUrl:media.publicUrl};
+  const result=await metricoolCreateScheduledPost(post,media.publicUrl);
+  return {...result,mediaValidated:true,mediaUrl:media.publicUrl};
 }
