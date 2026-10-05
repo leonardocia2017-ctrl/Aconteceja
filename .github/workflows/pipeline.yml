@@ -17,7 +17,8 @@ on:
 
 permissions:
   contents: read
-  id-token: write\n  contents: write
+  id-token: write
+  contents: write
 
 concurrency:
   group: aconteceja-pipeline
@@ -69,7 +70,8 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.media_probe == true }}
         env:
           DRY_RUN: "false"
-          METRICOOL_AUTO_PUBLISH: "true"\n          GITHUB_TOKEN: ${{ github.token }}
+          METRICOOL_AUTO_PUBLISH: "true"
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module <<'NODE'
           import { createMedia } from "./src/services/media.js";
