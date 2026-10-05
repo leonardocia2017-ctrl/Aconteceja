@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       media_probe:
-        description: "Testar somente upload/validação da ponte GCS (sem publicar)"
+        description: "Testar somente upload/validação da ponte GitHub (sem publicar)"
         required: false
         type: boolean
         default: false
@@ -17,7 +17,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write\n  contents: write
 
 concurrency:
   group: aconteceja-pipeline
@@ -65,11 +65,11 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.media_probe != true }}
         run: npm start
 
-      - name: Probe GCS media bridge (no social publication)
+      - name: Probe GitHub media bridge (no social publication)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.media_probe == true }}
         env:
           DRY_RUN: "false"
-          METRICOOL_AUTO_PUBLISH: "true"
+          METRICOOL_AUTO_PUBLISH: "true"\n          GITHUB_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module <<'NODE'
           import { createMedia } from "./src/services/media.js";
