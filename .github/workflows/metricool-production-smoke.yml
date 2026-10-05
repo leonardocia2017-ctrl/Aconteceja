@@ -1,0 +1,105 @@
+name: Metricool Production Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Digite PUBLICAR para autorizar uma publicação real'
+        required: true
+        type: string
+      publication_date:
+        description: 'Data/hora ISO-8601 da publicação (ex.: 2026-10-06T12:00:00-03:00)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: metricool-production-smoke
+  cancel-in-progress: false
+
+jobs:
+  publish-smoke:
+    if: ${{ inputs.confirm == 'PUBLICAR' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DRY_RUN: 'false'
+      METRICOOL_AUTO_PUBLISH: 'true'
+      METRICOOL_PUBLICATION_DATE: ${{ inputs.publication_date }}
+      METRICOOL_TOKEN: ${{ secrets.METRICOOL_TOKEN }}
+      METRICOOL_USER_ID: ${{ secrets.METRICOOL_USER_ID }}
+      METRICOOL_BLOG_ID: ${{ secrets.METRICOOL_BLOG_ID }}
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Syntax check
+        run: npm run check
+
+      - name: Tests
+        run: npm test
+
+      - name: Publish controlled smoke post
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdir, writeFile } from 'node:fs/promises';
+          import { createMedia } from './src/services/media.js';
+          import { publishPost } from './src/services/publisher.js';
+
+          const title = 'Teste técnico Acontece Já';
+          const media = await createMedia({
+            title,
+            category: 'geral',
+            source: 'Acontece Já',
+            sourceUrl: `smoke://${process.env.GITHUB_RUN_ID}`
+          });
+
+          const result = await publishPost({
+            title,
+            caption: 'Teste técnico de publicação do Acontece Já.',
+            media,
+            publicationDate: process.env.METRICOOL_PUBLICATION_DATE,
+            instagramType: 'POST'
+          }, { dryRun: false });
+
+          if (!result.metricoolId) {
+            throw new Error('SMOKE FAILED: Metricool não retornou ID real.');
+          }
+
+          const receipt = {
+            status: 'confirmed-by-metricool-id',
+            metricoolId: result.metricoolId,
+            uuid: result.uuid ?? null,
+            providerStatus: result.providerStatus ?? null,
+            mediaUrl: result.mediaUrl,
+            githubRunId: process.env.GITHUB_RUN_ID,
+            commitSha: process.env.GITHUB_SHA,
+            publicationDate: process.env.METRICOOL_PUBLICATION_DATE,
+            recordedAt: new Date().toISOString()
+          };
+
+          await mkdir('output/smoke', { recursive: true });
+          await writeFile('output/smoke/metricool-receipt.json', JSON.stringify(receipt, null, 2));
+          console.log('METRICOOL_PUBLICATION_CONFIRMED', result.metricoolId);
+          NODE
+
+      - name: Preserve publication receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metricool-production-smoke-receipt
+          path: output/smoke/metricool-receipt.json
+          if-no-files-found: warn
+          retention-days: 30
