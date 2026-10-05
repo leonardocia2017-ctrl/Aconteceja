@@ -66,7 +66,7 @@ jobs:
         run: npm start
 
       - name: Probe GitHub media bridge (no social publication)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.media_probe == true }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.media_probe == true) || github.event_name == 'push' }}
         env:
           DRY_RUN: "false"
           METRICOOL_AUTO_PUBLISH: "true"
