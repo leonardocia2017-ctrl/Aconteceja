@@ -4,9 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Digite PUBLICAR para autorizar uma publicação real'
+        description: 'Confirmar publicação real no Metricool'
         required: true
-        type: string
+        type: boolean
+        default: false
       publication_date:
         description: 'Data/hora ISO-8601 da publicação (ex.: 2026-10-06T12:00:00-03:00)'
         required: true
@@ -21,7 +22,7 @@ concurrency:
 
 jobs:
   publish-smoke:
-    if: ${{ inputs.confirm == 'PUBLICAR' }}
+    if: ${{ inputs.confirm == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
