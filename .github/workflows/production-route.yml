@@ -1,0 +1,46 @@
+name: Acontece Ja - Permanent Publication Route
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: 'Manifesto editorial validado em queue/*.json'
+        required: true
+        type: string
+permissions:
+  contents: write
+  id-token: write
+concurrency:
+  group: aconteceja-central-writer
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MANIFEST_PATH: ${{ inputs.manifest_path }}
+      GITHUB_TOKEN: ${{ github.token }}
+      METRICOOL_TOKEN: ${{ secrets.METRICOOL_TOKEN }}
+      METRICOOL_USER_ID: ${{ secrets.METRICOOL_USER_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: aconteceja-automacao
+          workload_identity_provider: projects/798640632443/locations/global/workloadIdentityPools/aconteceja-github/providers/github-actions
+          service_account: aconteceja-github@aconteceja-automacao.iam.gserviceaccount.com
+      - run: npm install --no-audit --no-fund
+      - run: node --check src/services/production.js
+      - run: npm test
+      - name: Publish only through central registry
+        run: node src/services/production.js "$MANIFEST_PATH"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-receipt
+          path: output/production/
+          if-no-files-found: ignore
+          retention-days: 30
