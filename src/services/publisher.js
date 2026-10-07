@@ -132,8 +132,6 @@ export async function publishPost(post,{dryRun=true}={}) {
     console.log("[DRY RUN] publicação validada com mídia:",post.title,post.media.path);
     return {status:"dry-run",mediaValidated:true};
   }
-  const media=await materializeMediaForMetricool(post.media,{upload:true});
-  if (!config.metricoolAutoPublish) throw new Error("Publicação bloqueada: METRICOOL_AUTO_PUBLISH não está habilitado.");
-  const result=await metricoolCreateScheduledPost(post,media.publicUrl);
-  return {...result,mediaValidated:true,mediaUrl:media.publicUrl};
+  throw new Error("Envio real exige src/services/production.js e registro central com readback.");
 }
+
