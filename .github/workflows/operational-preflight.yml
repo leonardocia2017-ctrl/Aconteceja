@@ -1,0 +1,105 @@
+name: Acontece Ja - Operational Preflight (No Publication)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/operational-preflight.yml']
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: aconteceja-central-writer
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      METRICOOL_TOKEN: ${{ secrets.METRICOOL_TOKEN }}
+      METRICOOL_USER_ID: ${{ secrets.METRICOOL_USER_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: aconteceja-automacao
+          workload_identity_provider: projects/798640632443/locations/global/workloadIdentityPools/aconteceja-github/providers/github-actions
+          service_account: aconteceja-github@aconteceja-automacao.iam.gserviceaccount.com
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - name: Check Drive and Metricool without posting
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { mkdir, writeFile } from 'node:fs/promises';
+          import sharp from 'sharp';
+          import { GoogleAuth } from 'google-auth-library';
+          import { DriveRegistry, Metricool, REGISTRY } from './src/services/production.js';
+          
+          const receipt = { runId: process.env.GITHUB_RUN_ID, checkedAt: new Date().toISOString(), publicationAttempted: false, checks: {} };
+          const probeId = 'operational-preflight-' + process.env.GITHUB_RUN_ID;
+          let drive, snapshot;
+          async function check(name, operation) {
+            try { receipt.checks[name] = {ok:true, evidence:await operation()}; }
+            catch (error) {
+              receipt.checks[name] = {ok:false, error: error.code ?? error.response?.status ?? 'ERROR', message: safe(error)};
+            }
+          }
+          function safe(error) {
+            const provider = error.response?.data?.error;
+            // Do not print request objects, authorization headers, credentials or URLs with tokens.
+            if (provider?.message) return provider.message;
+            if (error.message?.startsWith('HTTP ')) return error.message;
+            if (error.message === 'Credenciais Metricool ausentes') return error.message;
+            return error.name + ': operação não comprovada; consultar o código de erro';
+          }
+          await check('driveRead', async () => {
+            const client = await new GoogleAuth({scopes:['https://www.googleapis.com/auth/drive']}).getClient();
+            drive = new DriveRegistry(client);
+            snapshot = await drive.read();
+            return {registryId:REGISTRY, version:snapshot.meta.version, posts:snapshot.data.posts.length};
+          });
+          await check('driveWriteReadback', async () => {
+            if (!snapshot) throw new Error('Leitura Drive não comprovada');
+            const data = structuredClone(snapshot.data);
+            data.events.push({type:'OPERATIONAL_PREFLIGHT',probe_id:probeId,at:new Date().toISOString(),publication_attempted:false});
+            snapshot = await drive.save(snapshot,data);
+            return {probeId, version:snapshot.meta.version, eventReadback:true};
+          });
+          await check('mediaArchiveReadback', async () => {
+            if (!drive) throw new Error('Cliente Drive indisponível');
+            const bytes = await sharp({create:{width:1080,height:1350,channels:3,background:'#eeeeee'}}).jpeg().toBuffer();
+            const file = await drive.archive(bytes,probeId+'.jpg','image/jpeg');
+            receipt.archiveFileId=file.id;
+            const result = await drive.request('https://www.googleapis.com/drive/v3/files/'+file.id+'?alt=media',{responseType:'arraybuffer'});
+            const remote = Buffer.from(result.data);
+            if (!remote.equals(bytes)) throw new Error('Bytes arquivados divergiram');
+            return {fileId:file.id,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};
+          });
+          await check('metricoolCredentials', async () => {
+            const tokenPresent=Boolean(process.env.METRICOOL_TOKEN);
+            const userPresent=Boolean(process.env.METRICOOL_USER_ID);
+            if (!tokenPresent || !userPresent) throw new Error('Credenciais Metricool ausentes');
+            return {tokenPresent,userPresent,expectedBrand:'7125091'};
+          });
+          await check('metricoolHistory', async () => {
+            const rows = await new Metricool().list();
+            return {rows:rows.length, ids:rows.map(row=>row.id), range:'14 dias anteriores e 7 seguintes', paginationAccepted:true,
+              note:'Valida o contrato de histórico usado pelo executor; não valida POST ou publicação.'};
+          });
+          receipt.ok=Object.values(receipt.checks).every(check=>check.ok);
+          await mkdir('output/preflight',{recursive:true});
+          await writeFile('output/preflight/receipt.json',JSON.stringify(receipt,null,2));
+          console.log(JSON.stringify(receipt,null,2));
+          if (!receipt.ok) process.exitCode=1;
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: operational-preflight-receipt
+          path: output/preflight/receipt.json
+          if-no-files-found: warn
+          retention-days: 30
