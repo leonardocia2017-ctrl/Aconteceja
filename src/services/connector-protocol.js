@@ -62,15 +62,24 @@ export function transition(input) {
   const data=structuredClone(input.registry);
   if(!Array.isArray(data.posts)||!Array.isArray(data.events)) throw new Error('Registro inválido');
   if(lock?.state!=='ACTIVE'||lock.owner!==owner||lock.attemptId!==attemptId) throw new Error('Reserva não pertence à tentativa');
-  const id=identity(p), key=id+'|'+p.format;
-  let row=data.posts.find(x=>x.chave===key);
+  let id, key, row;
+  if(stage==='reconcile') {
+    const target=input.target;
+    if(!target?.pauta_id || !validId(target.metricool_id)) throw new Error('Alvo de reconciliação incompleto');
+    const matches=data.posts.filter(x=>x.pauta_id===target.pauta_id && String(x.metricool_id)===String(target.metricool_id));
+    if(matches.length!==1) throw new Error('Alvo de reconciliação ausente ou ambíguo');
+    row=matches[0]; id=row.pauta_id; key=row.chave;
+  } else {
+    id=identity(p); key=id+'|'+p.format;
+    row=data.posts.find(x=>x.chave===key);
+  }
   if(stage==='ready') {
     validate(p,now); assertHistory(h,now,p.publicationDate); assertNovel(p,data,h.rows);
     const m=input.media;
     if(!m?.drive_id||!m.sha256?.match(/^[a-f0-9]{64}$/)||m.archiveReadbackSha!==m.sha256||
        m.mime!=='image/jpeg'||m.width!==1080||m.height!==(p.format==='STORY'?1920:1350)) throw new Error('Arquivo Drive não comprovado');
     row={pauta_id:id,chave:key,factFingerprint:p.factFingerprint,format:p.format,title:p.title,text:p.caption??'',alt:[p.alt],
-      source_urls:p.sources.map(x=>x.url),state:'READY',route:ROUTE,owner,attempt_id:attemptId,media:[m],attempts:[]};
+      source_urls:p.sources.map(x=>x.url),state:'READY',route:ROUTE,owner,attempt_id:attemptId,media:[m],manifest:structuredClone(p),attempts:[]};
     data.posts.push(row);
   } else {
     if(!row || row.owner!==owner || row.attempt_id!==attemptId) throw new Error('Tentativa não encontrada');
