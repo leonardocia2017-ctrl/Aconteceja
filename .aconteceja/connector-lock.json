@@ -1,12 +1,12 @@
 {
-  "state": "ACTIVE",
-  "owner": "chat-correcao-mgapp-1791545238526",
-  "attemptId": "mgapp-1791545238526",
+  "state": "IDLE",
+  "owner": null,
+  "attemptId": null,
   "lastCompleted": {
-    "owner": "chat-publicar-20261008-receita",
-    "attemptId": "receita-cartas-20261008-2332",
-    "metricool_id": 391702985,
+    "owner": "chat-correcao-mgapp-1791545238526",
+    "attemptId": "mgapp-1791545238526",
+    "metricool_id": 391970200,
     "status": "PUBLISHED",
-    "public_url": "https://www.instagram.com/stories/aconteceja/4003828897796563467"
+    "public_url": "https://www.instagram.com/stories/aconteceja/4004098703632326507"
   }
 }
