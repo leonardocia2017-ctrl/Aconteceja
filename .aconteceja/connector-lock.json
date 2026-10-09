@@ -1,5 +1,5 @@
 {
-  "state": "IDLE",
-  "owner": null,
-  "attemptId": null
+  "state": "ACTIVE",
+  "owner": "protocol-check-20261008",
+  "attemptId": "no-publication-20261008-2326"
 }
