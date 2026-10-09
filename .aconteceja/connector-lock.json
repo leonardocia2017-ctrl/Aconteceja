@@ -1,7 +1,7 @@
 {
-  "state": "IDLE",
-  "owner": null,
-  "attemptId": null,
+  "state": "ACTIVE",
+  "owner": "chat-correcao-mgapp-1791545238526",
+  "attemptId": "mgapp-1791545238526",
   "lastCompleted": {
     "owner": "chat-publicar-20261008-receita",
     "attemptId": "receita-cartas-20261008-2332",
