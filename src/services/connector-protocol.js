@@ -5,6 +5,7 @@ import path from 'node:path';
 export const ROUTE = 'chatgpt_metricool_connector';
 const protectedStates = new Set(['READY','SENDING','UNKNOWN','SCHEDULED','PENDING','PUBLISHING','PUBLISHED','DRAFT']);
 const normalize = x => String(x ?? '').normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase();
+const altValues = x => x == null ? [] : Array.isArray(x) ? x : [x];
 export function identity(p) {
   const fields=[p.entities?.map(x=>normalize(x)).sort(),p.event,p.eventDate,p.development];
   if(!fields[0]?.length || fields.slice(1).some(x=>typeof x!=='string'||!x.trim())) throw new Error('Identidade factual incompleta');
@@ -33,14 +34,14 @@ function assertNovel(p,registry,rows,ownAttempt) {
     const state=row.state ?? row.providers?.find(x=>x.network==='instagram')?.status;
     const same=ids.has(row.pauta_id)||row.factFingerprint===p.factFingerprint||
       (normalize(p.caption)&&normalize(row.text)===normalize(p.caption))||
-      (row.alt??[]).some(x=>normalize(x)===normalize(p.alt));
+      altValues(row.alt).some(x=>normalize(x)===normalize(p.alt));
     if(same && (protectedStates.has(state)||row.metricool_id)) throw new Error('Fato equivalente já registrado; reconciliar');
   }
   const reviewed=new Set((p.reviewedMetricoolIds??[]).map(String));
   for(const row of rows) {
     if(!reviewed.has(String(row.id))) throw new Error('Histórico não revisado: '+row.id);
     if((normalize(p.caption)&&normalize(row.text)===normalize(p.caption)) ||
-       row.mediaAltText?.some(x=>normalize(x)===normalize(p.alt))) throw new Error('Conteúdo equivalente no Metricool');
+       altValues(row.mediaAltText).some(x=>normalize(x)===normalize(p.alt))) throw new Error('Conteúdo equivalente no Metricool');
   }
 }
 function validate(p,now) {
@@ -109,3 +110,4 @@ async function main() {
   await writeFile(outputPath,JSON.stringify(result,null,2));
 }
 if(process.argv[1] && import.meta.url===new URL('file://'+path.resolve(process.argv[1])).href) main().catch(error=>{console.error(error.message);process.exitCode=1;});
+
