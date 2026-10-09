@@ -16,7 +16,7 @@ node src/services/connector-protocol.js unknown input.json output.json
 node src/services/connector-protocol.js reconcile input.json output.json
 
 Claim recebe lock, owner e attemptId. Verify recebe expected e actual e exige igualdade integral.
-As demais etapas recebem registry, manifest, history, media, lock, owner, attemptId e now (ISO).
+Reconcile recebe registry, target:{pauta_id,metricool_id}, observed, lock, owner, attemptId e now (ISO). Exige um único registro correspondente, a mesma reserva e o mesmo ID observado. Não autoriza envio. As demais etapas recebem registry, manifest, history, media, lock, owner, attemptId e now (ISO). Ready preserva o manifesto no registro para recuperação.
 Manifest exige identidade factual, equivalências legadas, fingerprint, título, legenda, alt, fontes e validações explícitas, formato POST/STORY, data futura com offset, IDs revisados.
 History: rows, from, to, complete:true, hasMore:false, includesPublished:true, includesDrafts:true, includesPending:true e completionEvidence. Esses campos são comprovantes da consulta/revisão; nunca inventá-los. Exigir cobertura de 14 dias anteriores e 7 seguintes e da data de publicação. Um array sem metadados não comprova completude: completar pela revisão/exportação do Planner ou bloquear. Revisar todo ID, inclusive drafts e Stories sem texto.
 Media: drive_id, sha256, archiveReadbackSha, mime:image/jpeg, width:1080, height:1350 para POST ou 1920 para STORY. Arquivar pela conta de usuário no Drive conectado e comparar os bytes baixados com os locais antes de declarar archiveReadbackSha.
