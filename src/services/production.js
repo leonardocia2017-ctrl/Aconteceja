@@ -151,6 +151,8 @@ export async function run(p,{drive,metricool,materialize,wait=ms=>new Promise(r=
   return {state:'SCHEDULED',metricool_id:received,publication_confirmed:false};
 }
 export async function main() {
+  const routing=JSON.parse(await readFile('.aconteceja/routes.json','utf8'));
+  if(routing.activeRoute!=='github_rest') throw new Error('Rota REST bloqueada: o conector é o escritor ativo');
   const manifest=path.resolve(process.argv[2]??'');
   if (!manifest.startsWith(path.resolve('queue')+path.sep)||!manifest.endsWith('.json')) throw new Error('Manifesto deve estar em queue/*.json');
   const p=JSON.parse(await readFile(manifest,'utf8'));
