@@ -1,4 +1,6 @@
-# Rota permanente
+# Rota REST pelo GitHub
+
+A rota ativa é agora o conector: veja [CONNECTOR_ROUTE.md](CONNECTOR_ROUTE.md). A CLI REST é bloqueada enquanto .aconteceja/routes.json indicar chatgpt_metricool_connector. Não executar ambas as rotas em paralelo.
 
 O Giro Horário é o único responsável editorial. Pode delegar o envio ao workflow `production-route.yml` na main, fornecendo um manifesto já validado em `queue/`. Não existe outro agendamento de publicação nesta rota.
 
