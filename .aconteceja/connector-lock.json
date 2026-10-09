@@ -1,5 +1,12 @@
 {
-  "state": "ACTIVE",
-  "owner": "chat-publicar-20261008-receita",
-  "attemptId": "receita-cartas-20261008-2332"
+  "state": "IDLE",
+  "owner": null,
+  "attemptId": null,
+  "lastCompleted": {
+    "owner": "chat-publicar-20261008-receita",
+    "attemptId": "receita-cartas-20261008-2332",
+    "metricool_id": 391702985,
+    "status": "PUBLISHED",
+    "public_url": "https://www.instagram.com/stories/aconteceja/4003828897796563467"
+  }
 }
