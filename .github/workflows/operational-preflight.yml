@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
+      GOOGLE_DRIVE_ARCHIVE_FOLDER_ID: ${{ vars.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID }}
+      GOOGLE_DRIVE_OAUTH_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_OAUTH_CREDENTIALS }}
       METRICOOL_TOKEN: ${{ secrets.METRICOOL_TOKEN }}
       METRICOOL_USER_ID: ${{ secrets.METRICOOL_USER_ID }}
     steps:
@@ -36,8 +38,7 @@ jobs:
           import { createHash } from 'node:crypto';
           import { mkdir, writeFile } from 'node:fs/promises';
           import sharp from 'sharp';
-          import { GoogleAuth } from 'google-auth-library';
-          import { DriveRegistry, Metricool, REGISTRY } from './src/services/production.js';
+          import { DriveRegistry, Metricool, REGISTRY, createDriveClient } from './src/services/production.js';
           
           const receipt = { runId: process.env.GITHUB_RUN_ID, checkedAt: new Date().toISOString(), publicationAttempted: false, checks: {} };
           const probeId = 'operational-preflight-' + process.env.GITHUB_RUN_ID;
@@ -57,7 +58,7 @@ jobs:
             return error.name + ': operação não comprovada; consultar o código de erro';
           }
           await check('driveRead', async () => {
-            const client = await new GoogleAuth({scopes:['https://www.googleapis.com/auth/drive']}).getClient();
+            const client = await createDriveClient();
             drive = new DriveRegistry(client);
             snapshot = await drive.read();
             return {registryId:REGISTRY, version:snapshot.meta.version, posts:snapshot.data.posts.length};

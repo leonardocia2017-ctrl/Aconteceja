@@ -2,10 +2,22 @@ import { createHash } from 'node:crypto';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
-import { GoogleAuth } from 'google-auth-library';
+import { GoogleAuth, UserRefreshClient } from 'google-auth-library';
 
 export const REGISTRY = '1sBp-SIonEJ9z8ErHT9VjpgJbXwXVtulh';
-const FOLDER = '1jsKcEDUAqma4y9WDRpESqUPjTy7f-kZ3';
+const FOLDER = process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID || '1jsKcEDUAqma4y9WDRpESqUPjTy7f-kZ3';
+export async function createDriveClient() {
+  if (process.env.GOOGLE_DRIVE_OAUTH_CREDENTIALS) {
+    let credentials;
+    try { credentials=JSON.parse(process.env.GOOGLE_DRIVE_OAUTH_CREDENTIALS); }
+    catch { throw new Error('GOOGLE_DRIVE_OAUTH_CREDENTIALS deve conter JSON válido'); }
+    if (credentials.type!=='authorized_user' || !credentials.client_id || !credentials.client_secret || !credentials.refresh_token) throw new Error('OAuth Drive exige authorized_user, client_id, client_secret e refresh_token');
+    const client=new UserRefreshClient();
+    client.fromJSON(credentials);
+    return client;
+  }
+  return new GoogleAuth({scopes:['https://www.googleapis.com/auth/drive']}).getClient();
+}
 const BRAND = '7125091';
 const ZONE = 'America/Sao_Paulo';
 const protectedStates = new Set(['SENDING','UNKNOWN','SCHEDULED','PENDING','PUBLISHING','PUBLISHED']);
@@ -45,7 +57,11 @@ async function checked(response) {
 }
 export class DriveRegistry {
   constructor(client) { this.client=client; }
-  async request(url, options={}) { return this.client.request({url,...options}); }
+  async request(url, options={}) {
+    const target=new URL(url);
+    target.searchParams.set('supportsAllDrives','true');
+    return this.client.request({...options,url:target.href});
+  }
   async read() {
     const meta=(await this.request(`https://www.googleapis.com/drive/v3/files/${REGISTRY}?fields=id,version,modifiedTime`)).data;
     const data=(await this.request(`https://www.googleapis.com/drive/v3/files/${REGISTRY}?alt=media`)).data;
@@ -138,7 +154,7 @@ export async function main() {
   const manifest=path.resolve(process.argv[2]??'');
   if (!manifest.startsWith(path.resolve('queue')+path.sep)||!manifest.endsWith('.json')) throw new Error('Manifesto deve estar em queue/*.json');
   const p=JSON.parse(await readFile(manifest,'utf8'));
-  const client=await new GoogleAuth({scopes:['https://www.googleapis.com/auth/drive']}).getClient();
+  const client=await createDriveClient();
   const {materializeMediaForMetricool}=await import('./publisher.js');
   const receipt=await run(p,{drive:new DriveRegistry(client),metricool:new Metricool(),materialize:async(post,bytes)=>{
     // Existing bridge validates the actual remote JPG before sending.

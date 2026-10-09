@@ -20,6 +20,8 @@ jobs:
     env:
       MANIFEST_PATH: ${{ inputs.manifest_path }}
       GITHUB_TOKEN: ${{ github.token }}
+      GOOGLE_DRIVE_ARCHIVE_FOLDER_ID: ${{ vars.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID }}
+      GOOGLE_DRIVE_OAUTH_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_OAUTH_CREDENTIALS }}
       METRICOOL_TOKEN: ${{ secrets.METRICOOL_TOKEN }}
       METRICOOL_USER_ID: ${{ secrets.METRICOOL_USER_ID }}
     steps:
