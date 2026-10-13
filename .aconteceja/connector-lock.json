@@ -1,7 +1,7 @@
 {
-  "state": "IDLE",
-  "owner": null,
-  "attemptId": null,
+  "state": "ACTIVE",
+  "owner": "chat-aconteceja-amazonas-1791925600753",
+  "attemptId": "amazonas-1791925600753",
   "lastCompleted": {
     "owner": "chat-correcao-mgapp-1791545238526",
     "attemptId": "mgapp-1791545238526",
