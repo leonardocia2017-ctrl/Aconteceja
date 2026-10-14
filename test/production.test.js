@@ -17,7 +17,7 @@ test('registry changed by another writer prevents PATCH',async()=>{
   await assert.rejects(drive.save({meta:{version:'1'},data:{posts:[],events:[]}},{posts:[],events:[]}),/Concorrência/);
   assert.equal(patches,0);
 });
-async function exercise({archiveMismatch=false,id=123,publicUrl='https://www.instagram.com/stories/aconteceja/123'}={}) {
+async function exercise({archiveMismatch=false,id=123,historyComplete=true,createError=null,publicUrl='https://www.instagram.com/stories/aconteceja/123'}={}) {
  const directory=await mkdtemp(path.join(os.tmpdir(),'aconteceja-rest-'));
  const mediaPath=path.join(directory,'story.jpg');
  const bytes=await sharp({create:{width:1080,height:1920,channels:3,background:'white'}}).jpeg().toBuffer();
@@ -26,7 +26,7 @@ async function exercise({archiveMismatch=false,id=123,publicUrl='https://www.ins
  const drive={read:async()=>structuredClone(snapshot),archive:async()=>({id:'archive'}),
  request:async()=>({data:archiveMismatch?Buffer.from('wrong'):bytes}),
  save:async(expected,data)=>{assert.deepEqual(expected,snapshot);snapshot={meta:{version:String(Number(snapshot.meta.version)+1)},data:structuredClone(data)};return structuredClone(snapshot);}};
- const metricool={list:async()=>++listCalls<=2?[]:[{id,providers:[{network:'instagram',status:'PUBLISHED',publicUrl}]}],create:async()=>{calls++;return {id};}};
+ const metricool={list:async()=>({rows:++listCalls<=2?[]:[{id,providers:[{network:'instagram',status:'PUBLISHED',publicUrl}]}],from:new Date(Date.now()-15*86400000).toISOString(),to:new Date(Date.now()+8*86400000).toISOString(),complete:historyComplete,hasMore:false,includesPublished:true,includesDrafts:true,includesPending:true,completionEvidence:'fixture export of all statuses'}),create:async()=>{calls++;if(createError)throw createError;return {id};}};
  try {
   let error,result;
   try {result=await run({...p,mediaPath,publicationDate:new Date(Date.now()+600000).toISOString().replace('Z','+00:00')},{drive,metricool,materialize:async()=> 'https://media.example/story.jpg',wait:async()=>{}});} catch(e){error=e;}
@@ -44,6 +44,18 @@ test('REST confirms only matching ID, Instagram status and URL and preserves arc
  const r=await exercise();assert.equal(r.error,undefined);assert.equal(r.result.state,'PUBLISHED');assert.equal(r.result.metricool_id,123);
  assert.equal(r.snapshot.data.posts[0].publication_evidence.metricool_id,123);
  assert.equal(r.snapshot.data.posts[0].media[0].sha256,r.snapshot.data.posts[0].media[0].archiveReadbackSha);
- assert.equal(r.snapshot.data.posts[0].manifest.title,p.title);assert.equal(r.calls,1);
+ assert.equal(r.snapshot.data.posts[0].manifest.title,p.title);assert.equal(r.calls,1);assert.equal(r.result.readback.verified,true);assert.equal(r.snapshot.data.posts[0].history_evidence.ready.complete,true);assert.equal(r.snapshot.data.events.filter(x=>x.type==='REST_RECEIPT').length,1);assert.equal(r.snapshot.data.events.filter(x=>x.type==='REST_OBSERVATION').length,1);
 });
 
+
+
+test('REST blocks unproven history before any call',async()=>{
+ const r=await exercise({historyComplete:false});assert.match(r.error.message,/Histórico completo/);assert.equal(r.calls,0);
+});
+test('REST preserves raw errors and rejected publication observations',async()=>{
+ const error=new Error('HTTP 400');error.provider_response={status:400,body:{error:'Invalid date'}};
+ const r=await exercise({createError:error});assert.equal(r.snapshot.data.posts[0].state,'UNKNOWN');
+ assert.deepEqual(r.snapshot.data.events.find(x=>x.type==='REST_ERROR_EVIDENCE').response,error.provider_response);
+ const missing=await exercise({publicUrl:null});const observation=missing.snapshot.data.events.find(x=>x.type==='REST_OBSERVATION');
+ assert.match(observation.validation_error,/URL pública/);assert.equal(observation.observed.id,123);
+});
