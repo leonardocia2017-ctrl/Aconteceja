@@ -1,12 +1,29 @@
 {
-  "state": "ACTIVE",
-  "owner": "chat-aconteceja-amazonas-1791925600753",
-  "attemptId": "amazonas-1791925600753",
+  "state": "IDLE",
+  "owner": null,
+  "attemptId": null,
   "lastCompleted": {
     "owner": "chat-correcao-mgapp-1791545238526",
     "attemptId": "mgapp-1791545238526",
     "metricool_id": 391970200,
     "status": "PUBLISHED",
     "public_url": "https://www.instagram.com/stories/aconteceja/4004098703632326507"
-  }
+  },
+  "quarantinedAttempts": [
+    {
+      "owner": "chat-aconteceja-amazonas-1791925600753",
+      "attemptId": "amazonas-1791925600753",
+      "pauta_id": "d74eefe8dd3e48cc1e9f229d86869cb8ef857e09b8a8183e738201ca8495e5ba",
+      "factFingerprint": "fn-sus-amazonas-queimadas-equipe-11out-comunicado-13out2026",
+      "identity_sha256": "09cd275e85d0e9014ea2ed3c57f0842d3b6ec024b356b20d7487d2b42a7af4ca",
+      "status": "UNKNOWN",
+      "retry_allowed": false,
+      "at": "2026-10-14T12:44:23.346Z",
+      "readback": {
+        "verified": true,
+        "sha256": "be474b89d0cfc285118b9696ba1a1f4206603d1491def3d5d808b7b981fe6b9b",
+        "checked_at": "2026-10-14T12:44:23.346Z"
+      }
+    }
+  ]
 }
