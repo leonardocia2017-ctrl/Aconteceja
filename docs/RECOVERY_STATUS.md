@@ -9,3 +9,9 @@ Próxima operação: obter confirmação correlacionada do provedor de aceitaç�
 O MGApp mantém evidência legada de publicação do ID 391970200 e URL pública correspondente; não reenviar. Os novos recibos de histórico/readback não existem retroativamente nos registros antigos.
 
 Esta correção não efetua publicação social, não altera o registro Drive e não libera a reserva pendente. A rota ativa permanece chatgpt_metricool_connector; não habilitar REST em paralelo.
+
+## Alternativa operacional sem declaração de rejeição
+
+As métricas de Stories de 13/10 a 14/10 retornaram apenas o Story MEC Enem, ID Instagram 4006971798725366194. A aba Postagens excluídas do Planner mostrou que não há itens excluídos. Essas consultas não provam rejeição do Amazonas.
+
+A resposta síncrona INVALID_ARGUMENT já persistida permite colocar a tentativa em quarentena auditável, mantendo UNKNOWN e bloqueando reenvio desse fato. A reserva pode ficar IDLE com quarantinedAttempts para receber exclusivamente novas pautas independentes. O caso de suporte segue pendente; a resposta técnica futura deve ser reconciliada após retomar a reserva com resume, sem criar novo post para o Amazonas.

@@ -62,3 +62,14 @@ Não inferir rejeição definitiva de INVALID_ARGUMENT, timeout ou ausência na 
 Persistir DISPATCHING antes da chamada elimina retry com estado fresco, mas não oferece idempotência no servidor Metricool. O executor deve consultar registro e reserva atuais, fazer atualização protegida e aguardar seu próprio readback. Não reutilizar outputs antigos, não chamar o provedor duas vezes e não retomar uma chamada após crash. Alterações concorrentes são bloqueios, não justificativa de retry. As funções Node apenas produzem resultados; não executam escrita no Drive, liberação GitHub ou a chamada do conector.
 
 As evidências antigas ausentes não podem ser retroativamente fabricadas. Aplicar o novo protocolo às novas tentativas; manter evidências legadas como legadas.
+
+## Quarentena para preservar disponibilidade sem reenviar o fato incerto
+
+Quarentena NÃO significa rejeição, cancelamento ou publicação. Só pode ser usada em UNKNOWN sem ID com resposta síncrona INVALID_ARGUMENT já persistida e received_at válido. Timeout, SENDING e DISPATCHING sem esse retorno continuam ocupando o escritor. A notícia fica UNKNOWN e bloqueada por identidade, equivalências, fingerprint, legenda e alt.
+
+1. Ler reserva/registro frescos da mesma tentativa; executar verify do snapshot. Rodar `quarantine` com registry, lock, owner, attemptId, readback, now. O protocolo preserva a resposta bruta e fixa SHA-256 da identidade editorial. Gravar apenas output.registry no mesmo arquivo Drive, reler e verificar.
+2. Rodar `quarantine-release` com esse snapshot e seu novo readback. Gravar a reserva pelo SHA GitHub atual e reler. O resultado é IDLE com quarantinedAttempts; lastCompleted permanece intacto. O resultado incerto não foi encerrado.
+3. `claim` quando existem quarantinedAttempts passa também registry e readback. A identidade dos registros UNKNOWN precisa permanecer íntegra; exclusão, alteração ou falta de releitura bloqueiam a reserva. Cada transição repete a verificação das quarentenas. A pauta nova passa todas as validações de novidade e histórico do protocolo existente. Não chamar a criação de post para o fato em quarentena.
+4. Para investigar a tentativa original com prova positiva futura, esperar IDLE e rodar `resume` com a identidade ORIGINAL owner/attemptId e readback do registro. Gravar/reler a reserva ACTIVE. Usar recover/reject/reconcile; estas etapas nunca reenviam. Release só remove a pendência da lista após publicação confirmada, rejeição comprovada ou falha final de ID conhecido. Se continuar UNKNOWN, não executar envio.
+
+Nunca apagar o registro em quarentena para desbloquear duplicatas. Nunca substituir lastCompleted por UNKNOWN. A rota REST continua desativada. Essa separação mantém um resultado incerto bloqueado por fato e permite apenas notícias independentes, com reserva única e readback real.

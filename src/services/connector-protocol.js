@@ -15,6 +15,18 @@ export function assertReadback(expected,actual) {
   if(JSON.stringify(expected)!==JSON.stringify(actual)) throw new Error('Readback divergiu; não enviar');
 }
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const protectedIdentity = row => digest({pauta_id:row.pauta_id,factFingerprint:row.factFingerprint,format:row.format,
+  text:row.text,alt:row.alt,manifest:row.manifest});
+function requireQuarantines(registry,lock) {
+  for(const pending of lock?.quarantinedAttempts??[]) {
+    const rows=registry?.posts?.filter(x=>x.owner===pending.owner&&x.attempt_id===pending.attemptId)??[];
+    if(rows.length!==1||rows[0].pauta_id!==pending.pauta_id||protectedIdentity(rows[0])!==pending.identity_sha256||
+       rows[0].quarantine?.identity_sha256!==pending.identity_sha256)
+      throw new Error('Quarentena ausente ou identidade alterada; bloquear escritor');
+    const resuming=lock.state==='ACTIVE'&&lock.owner===pending.owner&&lock.attemptId===pending.attemptId;
+    if(!resuming&&(rows[0].state!=='UNKNOWN'||rows[0].metricool_id)) throw new Error('Quarentena exige reconciliação antes de nova reserva');
+  }
+}
 export function verifyReadback(expected,actual,now) {
   if(!Number.isFinite(Date.parse(now))) throw new Error('Horário de verificação inválido');
   assertReadback(expected,actual);
@@ -87,10 +99,12 @@ export function releaseReservation(input) {
   const rows=registry.posts.filter(x=>x.owner===owner&&x.attempt_id===attemptId);
   if(rows.length!==1) throw new Error('Reserva exige publicação confirmada ou rejeição comprovada; reconciliar');
   const row=rows[0];
+  requireQuarantines(registry,lock);
+  const remainingLock={...lock,quarantinedAttempts:(lock.quarantinedAttempts??[]).filter(x=>x.attemptId!==attemptId||x.owner!==owner)};
   if(row.reconciliation_error) throw new Error('Observação pendente de reconciliação; não liberar');
   if(row.state==='REJECTED') {
     const evidence=rejectionEvidence(row,row.rejection_evidence);
-    return {...lock,state:'IDLE',owner:null,attemptId:null,lastCompleted:{owner,attemptId,status:'REJECTED',
+    return {...remainingLock,state:'IDLE',owner:null,attemptId:null,lastCompleted:{owner,attemptId,status:'REJECTED',
       rejection_evidence:evidence,readback:structuredClone(readback),closed_at:now}};
   }
   if(row.state==='FAILED') {
@@ -99,17 +113,44 @@ export function releaseReservation(input) {
     if(!validId(row.metricool_id)||String(observation?.observed?.id)!==String(row.metricool_id)||
        providers.length!==1||!['FAILED','ERROR'].includes(providers[0].status)||observation.validation_error||
        JSON.stringify(row.providers)!==JSON.stringify(observation.observed.providers)) throw new Error('Falha final do mesmo ID não comprovada');
-    return {...lock,state:'IDLE',owner:null,attemptId:null,lastCompleted:{owner,attemptId,status:'FAILED',metricool_id:row.metricool_id,
+    return {...remainingLock,state:'IDLE',owner:null,attemptId:null,lastCompleted:{owner,attemptId,status:'FAILED',metricool_id:row.metricool_id,
       failure_evidence:structuredClone(observation),readback:structuredClone(readback),closed_at:now}};
   }
   if(row.state!=='PUBLISHED') throw new Error('Reserva exige publicação confirmada ou rejeição comprovada; reconciliar');
   const evidence=publicationEvidence(row,{id:row.metricool_id,providers:row.providers},now);
   if(row.publication_evidence?.metricool_id!==row.metricool_id||row.publication_evidence?.public_url!==evidence.public_url)
     throw new Error('Evidência persistida divergiu');
-  return {...lock,state:'IDLE',owner:null,attemptId:null,lastCompleted:{owner,attemptId,metricool_id:row.metricool_id,status:'PUBLISHED',public_url:evidence.public_url,readback:structuredClone(readback),closed_at:now}};
+  return {...remainingLock,state:'IDLE',owner:null,attemptId:null,lastCompleted:{owner,attemptId,metricool_id:row.metricool_id,status:'PUBLISHED',public_url:evidence.public_url,readback:structuredClone(readback),closed_at:now}};
 }
-export function claim(lock,owner,attemptId) {
+export function quarantineReservation(input) {
+  const {registry,lock,owner,attemptId,readback,now}=input;
+  if(!Number.isFinite(Date.parse(now))) throw new Error('Horário de verificação inválido');
+  requireReadback(registry,readback);requireQuarantines(registry,lock);
+  if(lock?.state!=='ACTIVE'||lock.owner!==owner||lock.attemptId!==attemptId) throw new Error('Reserva não pertence à tentativa');
+  const rows=registry.posts.filter(x=>x.owner===owner&&x.attempt_id===attemptId);
+  if(rows.length!==1||rows[0].state!=='UNKNOWN'||rows[0].metricool_id||rows[0].quarantine?.retry_allowed!==false||
+     rows[0].quarantine.identity_sha256!==protectedIdentity(rows[0])) throw new Error('Quarentena persistida de UNKNOWN exigida');
+  const row=rows[0];
+  if(!registry.events.some(x=>x.type==='CONNECTOR_QUARANTINE'&&x.owner===owner&&x.attempt_id===attemptId&&x.identity_sha256===row.quarantine.identity_sha256))
+    throw new Error('Recibo de quarentena ausente');
+  if((lock.quarantinedAttempts??[]).some(x=>x.owner===owner&&x.attemptId===attemptId)) throw new Error('Quarentena já destacada');
+  return {...lock,state:'IDLE',owner:null,attemptId:null,quarantinedAttempts:[...(lock.quarantinedAttempts??[]),
+    {owner,attemptId,pauta_id:row.pauta_id,factFingerprint:row.factFingerprint,identity_sha256:row.quarantine.identity_sha256,
+      status:'UNKNOWN',retry_allowed:false,at:now,readback:structuredClone(readback)}]};
+}
+export function resumeQuarantine(input) {
+  const {registry,lock,owner,attemptId,readback}=input;
+  requireReadback(registry,readback);requireQuarantines(registry,lock);
+  if(lock.state!=='IDLE'||!(lock.quarantinedAttempts??[]).some(x=>x.owner===owner&&x.attemptId===attemptId))
+    throw new Error('Quarentena não pode ser retomada nesta reserva');
+  return {...lock,state:'ACTIVE',owner,attemptId};
+}
+export function claim(lock,owner,attemptId,registry,readback) {
   if(lock.state!=='IDLE' || !owner || !attemptId) throw new Error('Reserva ocupada ou identidade ausente');
+  if((lock.quarantinedAttempts??[]).length) {
+    requireReadback(registry,readback);requireQuarantines(registry,lock);
+    if(registry.posts.some(x=>x.attempt_id===attemptId)) throw new Error('Tentativa já utilizada; não recriar quarentena');
+  }
   return {...lock,state:'ACTIVE',owner,attemptId};
 }
 export function assertHistory(h,now,publicationDate) {
@@ -160,6 +201,7 @@ export function transition(input) {
   const data=structuredClone(input.registry);
   if(!Array.isArray(data.posts)||!Array.isArray(data.events)) throw new Error('Registro inválido');
   if(lock?.state!=='ACTIVE'||lock.owner!==owner||lock.attemptId!==attemptId) throw new Error('Reserva não pertence à tentativa');
+  requireQuarantines(data,lock);
   let id, key, row;
   if(stage==='reconcile') {
     const target=input.target;
@@ -167,7 +209,7 @@ export function transition(input) {
     const matches=data.posts.filter(x=>x.pauta_id===target.pauta_id && String(x.metricool_id)===String(target.metricool_id));
     if(matches.length!==1) throw new Error('Alvo de reconciliação ausente ou ambíguo');
     row=matches[0]; id=row.pauta_id; key=row.chave;
-  } else if(['recover','reject','dispatch','accepted','unknown'].includes(stage)) {
+  } else if(['recover','reject','dispatch','accepted','unknown','quarantine'].includes(stage)) {
     const matches=data.posts.filter(x=>x.owner===owner&&x.attempt_id===attemptId);
     if(matches.length!==1) throw new Error('Tentativa não encontrada ou ambígua');
     row=matches[0];id=row.pauta_id;key=row.chave;
@@ -219,6 +261,16 @@ export function transition(input) {
         row.connector_response=structuredClone(input.response);
         data.events.push({type:'CONNECTOR_ERROR_EVIDENCE',pauta_id:id,attempt_id:attemptId,owner,at:input.now,response:structuredClone(input.response)});
       }
+    } else if(stage==='quarantine') {
+      requireReadback(input.registry,input.readback);
+      const response=row.connector_response;
+      if(row.state!=='UNKNOWN'||row.metricool_id||row.quarantine||response?.isError!==true||response.error_code!=='INVALID_ARGUMENT'||
+         !Number.isFinite(Date.parse(response.received_at))||Date.parse(response.received_at)>now)
+        throw new Error('Quarentena exige retorno síncrono de validação persistido; timeout ou envio em curso continuam bloqueados');
+      row.quarantine={status:'AWAITING_RECONCILIATION',at:input.now,retry_allowed:false,identity_sha256:protectedIdentity(row)};
+      data.events.push({type:'CONNECTOR_QUARANTINE',pauta_id:id,attempt_id:attemptId,owner,at:input.now,
+        identity_sha256:row.quarantine.identity_sha256,connector_response:structuredClone(response),readback:structuredClone(input.readback),
+        conclusion:'Resultado permanece UNKNOWN; liberar apenas pautas independentes, sem retry desta tentativa'});
     } else if(stage==='reject') {
       requireReadback(input.registry,input.readback);
       if(!['UNKNOWN','SENDING','DISPATCHING'].includes(row.state)) throw new Error('Rejeição fora de tentativa incerta');
@@ -262,7 +314,9 @@ async function main() {
   const input=JSON.parse(await readFile(inputPath,'utf8'));
   let result;
   if(stage==='verify') result=verifyReadback(input.expected,input.actual,input.now);
-  else if(stage==='claim') result=claim(input.lock,input.owner,input.attemptId);
+  else if(stage==='claim') result=claim(input.lock,input.owner,input.attemptId,input.registry,input.readback);
+  else if(stage==='quarantine-release') result=quarantineReservation(input);
+  else if(stage==='resume') result=resumeQuarantine(input);
   else if(stage==='request') result=await prepareConnectorRequest(input);
   else if(stage==='dispatch') result=await prepareConnectorDispatch(input);
   else if(stage==='release') result=releaseReservation(input);
