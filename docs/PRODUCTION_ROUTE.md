@@ -4,7 +4,7 @@ A rota ativa é agora o conector: veja [CONNECTOR_ROUTE.md](CONNECTOR_ROUTE.md).
 
 O Giro Horário é o único responsável editorial. Pode delegar o envio ao workflow `production-route.yml` na main, fornecendo um manifesto já validado em `queue/`. Não existe outro agendamento de publicação nesta rota.
 
-O executor lê o mesmo registro Drive, verifica histórico do Metricool (14 dias anteriores e 7 seguintes), preserva os dados, arquiva a mídia no Drive, grava READY e SENDING com readback, envia uma única vez e registra ID/estado. Timeout, erro de envio ou resposta sem ID ficam UNKNOWN, exigindo reconciliação antes de qualquer nova tentativa. PUBLISHED exige status explícito do Instagram. O grupo de concorrência serializa estes jobs GitHub; o JSON do Drive não garante exclusão mútua com escritores externos. O Giro deve aguardar a execução delegada e não enviar diretamente em paralelo.
+O executor lê o mesmo registro Drive, verifica histórico do Metricool (14 dias anteriores e 7 seguintes), preserva os dados, arquiva a mídia no Drive, grava READY e SENDING com readback, envia uma única vez e registra ID/estado. Timeout, erro de envio ou resposta sem ID ficam UNKNOWN, exigindo reconciliação antes de qualquer nova tentativa. PUBLISHED exige ID real correspondente, status explícito de um único provedor Instagram e URL pública válida do formato/conta. Respostas brutas, observações (inclusive URL inválida), histórico e readback são registrados. Histórico precisa incluir prova explícita de completude; resposta em array sem metadados bloqueia o envio. O grupo de concorrência serializa estes jobs GitHub; o JSON do Drive não garante exclusão mútua com escritores externos. O Giro deve aguardar a execução delegada e não enviar diretamente em paralelo.
 
 ## Manifesto
 
@@ -17,3 +17,4 @@ Imagem: JPG 1080x1350 para POST ou 1080x1920 para STORY. REEL permanece bloquead
 Reutiliza OIDC e secrets METRICOOL_TOKEN/METRICOOL_USER_ID existentes. A conta de serviço precisa poder ler e editar o registro e criar arquivos na pasta indicada. Não alterar compartilhamento para público como solução de autorização. A implementação deve ser validada em execução antes de ser considerada operacional: OIDC para Google Cloud não comprova permissão no Drive, e o endpoint REST Metricool pode depender do acesso API da conta. Não reenviar automaticamente em caso de erro.
 
 Notificações continuam a cargo do Giro e devem ser registradas uma vez por ID/status. Um ID significa solicitação aceita, não publicação concluída. Receipts do GitHub são evidência auxiliar, nunca substituem o registro central. A antiga função publishPost bloqueia envios reais sem esse protocolo, inclusive smoke tests legados.
+

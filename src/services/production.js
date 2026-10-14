@@ -3,7 +3,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import { GoogleAuth, UserRefreshClient } from 'google-auth-library';
-import { publicationEvidence, validId } from './connector-protocol.js';
+import { publicationEvidence, validId, assertHistory, verifyReadback } from './connector-protocol.js';
 
 export const REGISTRY = '1sBp-SIonEJ9z8ErHT9VjpgJbXwXVtulh';
 const FOLDER = process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID || '1jsKcEDUAqma4y9WDRpESqUPjTy7f-kZ3';
@@ -21,7 +21,7 @@ export async function createDriveClient() {
 }
 const BRAND = '7125091';
 const ZONE = 'America/Sao_Paulo';
-const protectedStates = new Set(['SENDING','UNKNOWN','SCHEDULED','PENDING','PUBLISHING','PUBLISHED']);
+const protectedStates = new Set(['READY','SENDING','DISPATCHING','UNKNOWN','SCHEDULED','PENDING','PUBLISHING','PUBLISHED']);
 export function identity(p) {
   const fields = [p.entities?.map(x=>x.trim().toLowerCase()).sort(), p.event, p.eventDate, p.development];
   if (!fields[0]?.length || fields.slice(1).some(x=>typeof x!=='string'||!x.trim())) throw new Error('Identidade factual incompleta');
@@ -92,14 +92,18 @@ export class Metricool {
   async request(method,query='',body) {
     const url=`https://app.metricool.com/api/v2/scheduler/posts?userId=${encodeURIComponent(this.user)}&blogId=${BRAND}${query}`;
     const response=await fetch(url,{method,headers:{'X-Mc-Auth':this.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(30000)});
-    return (await checked(response)).json();
+    const raw=await response.text();let result;
+    try {result=JSON.parse(raw);} catch {result={raw};}
+    if(!response.ok) {const error=new Error(`HTTP ${response.status}`);error.provider_response={status:response.status,body:result};throw error;}
+    return result;
   }
   async list() {
     const from=new Date(Date.now()-14*86400000).toISOString(), to=new Date(Date.now()+7*86400000).toISOString();
     const body=await this.request('GET',`&start=${encodeURIComponent(from)}&end=${encodeURIComponent(to)}&timezone=${encodeURIComponent(ZONE)}`);
     const rows=Array.isArray(body)?body:body.data;
     if (!Array.isArray(rows)||body.hasMore||body.nextPage||body.pagination?.hasNext) throw new Error('Histórico Metricool incompleto');
-    return rows;
+    return {rows,from,to,complete:body.complete,hasMore:body.hasMore,includesPublished:body.includesPublished,
+      includesDrafts:body.includesDrafts,includesPending:body.includesPending,completionEvidence:body.completionEvidence};
   }
   async create(p,url) {
     const local=new Intl.DateTimeFormat('sv-SE',{timeZone:ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(p.publicationDate)).replace(' ','T');
@@ -110,7 +114,8 @@ export async function run(p,{drive,metricool,materialize,wait=ms=>new Promise(r=
   validate(p);
   let snapshot=await drive.read();
   const remote=await metricool.list();
-  assertNovel(p,snapshot.data,remote);
+  assertHistory(remote,Date.now(),p.publicationDate);
+  assertNovel(p,snapshot.data,remote.rows);
   if (Date.parse(p.publicationDate)<=Date.now()) throw new Error('Data de publicação já passou');
   const bytes=await readFile(p.mediaPath);
   if (p.format==='REEL') throw new Error('REEL bloqueado até existir validação real de vídeo');
@@ -121,12 +126,13 @@ export async function run(p,{drive,metricool,materialize,wait=ms=>new Promise(r=
   const archived=(await drive.request(`https://www.googleapis.com/drive/v3/files/${media.id}?alt=media`,{responseType:'arraybuffer'})).data;
   if(!Buffer.from(archived).equals(bytes)) throw new Error('Arquivo Drive difere do original');
   const sha=createHash('sha256').update(bytes).digest('hex');
-  const record={pauta_id:id,chave:`${id}|${p.format}`,factFingerprint:p.factFingerprint,format:p.format,title:p.title,text:p.caption??'',alt:[p.alt],source_urls:p.sources.map(s=>s.url),state:'READY',manifest:structuredClone(p),media:[{drive_id:media.id,sha256:sha,archiveReadbackSha:sha,mime:'image/jpeg',width:metadata.width,height:metadata.height}],attempts:[]};
-  async function persist(update) {
+  const record={pauta_id:id,chave:`${id}|${p.format}`,factFingerprint:p.factFingerprint,format:p.format,title:p.title,text:p.caption??'',alt:[p.alt],source_urls:p.sources.map(s=>s.url),state:'READY',manifest:structuredClone(p),history_evidence:{ready:structuredClone(remote)},readback_evidence:{},media:[{drive_id:media.id,sha256:sha,archiveReadbackSha:sha,mime:'image/jpeg',width:metadata.width,height:metadata.height}],attempts:[]};
+  async function persist(update,event) {
     const data=structuredClone(snapshot.data);
     let row=data.posts.find(x=>x.chave===record.chave);
     if (!row) {row=structuredClone(record);data.posts.push(row);}
     Object.assign(row,update,{updated_at:new Date().toISOString()});
+    if(event) data.events.push({...event,pauta_id:id,attempt_id:attemptId,at:new Date().toISOString()});
     snapshot=await drive.save(snapshot,data);
     return row;
   }
@@ -134,23 +140,38 @@ export async function run(p,{drive,metricool,materialize,wait=ms=>new Promise(r=
   let url;
   try {url=await materialize(p,bytes);} catch(error) {await persist({state:'BLOCKED',error:error.message});throw error;}
   const latest=await metricool.list();
-  // The newly created READY row is not a sent record.
-  assertNovel(p,snapshot.data,latest);
-  await persist({state:'SENDING',attempts:[{attempt_id:attemptId,started_at:new Date().toISOString(),status:'SENDING'}],metricool_media:[url]});
+  assertHistory(latest,Date.now(),p.publicationDate);
+  assertNovel(p,{...snapshot.data,posts:snapshot.data.posts.filter(x=>x.chave!==record.chave)},latest.rows);
+  if(Date.parse(p.publicationDate)<=Date.now()) throw new Error('Data de publicação já passou');
+  const readyReadback=verifyReadback(snapshot.data,(await drive.read()).data,new Date().toISOString());
+  await persist({state:'SENDING',history_evidence:{ready:remote,sending:latest},readback_evidence:{ready:readyReadback},attempts:[{attempt_id:attemptId,started_at:new Date().toISOString(),status:'SENDING'}],metricool_media:[url]});
+  const sendingReadback=verifyReadback(snapshot.data,(await drive.read()).data,new Date().toISOString());
   let response;
-  try {response=await metricool.create(p,url);} catch(error) {await persist({state:'UNKNOWN',error:'Resposta de envio incerta; reconciliar antes de retry'});throw error;}
+  try {response=await metricool.create(p,url);} catch(error) {
+    const raw=error.provider_response??{name:error.name,message:error.message};
+    await persist({state:'UNKNOWN',error:'Resposta de envio incerta; reconciliar antes de retry',connector_response:raw},
+      {type:'REST_ERROR_EVIDENCE',response:raw});throw error;
+  }
   const received=response.id??response.data?.id;
-  if (!validId(received)) {await persist({state:'UNKNOWN',error:'Resposta sem ID real'});throw new Error('UNKNOWN: sem ID real');}
-  await persist({state:'SCHEDULED',metricool_id:received,uuid:response.uuid??response.data?.uuid??null});
+  const receiptEvent={type:'REST_RECEIPT',response:structuredClone(response)};
+  if (!validId(received)) {await persist({state:'UNKNOWN',error:'Resposta sem ID real'},receiptEvent);throw new Error('UNKNOWN: sem ID real');}
+  await persist({state:'SCHEDULED',metricool_id:received,uuid:response.uuid??response.data?.uuid??null,
+    readback_evidence:{ready:readyReadback,sending:sendingReadback}},receiptEvent);
   for(let n=0;n<10;n++) {
-    const rows=await metricool.list(), found=rows.find(x=>String(x.id)===String(received));
+    const history=await metricool.list(),found=history.rows.find(x=>String(x.id)===String(received));
     const provider=found?.providers?.find(x=>x.network==='instagram');
     if(provider?.status==='PUBLISHED') {
-      const evidence=publicationEvidence({...record,metricool_id:received},found,new Date().toISOString());
-      await persist({state:'PUBLISHED',providers:found.providers,publication_evidence:evidence});
-      return {state:'PUBLISHED',metricool_id:received,url:evidence.public_url};
+      let evidence;
+      try {evidence=publicationEvidence({...record,metricool_id:received},found,new Date().toISOString());}
+      catch(error) {
+        await persist({reconciliation_error:error.message},{type:'REST_OBSERVATION',observed:found,validation_error:error.message});throw error;
+      }
+      await persist({state:'PUBLISHED',providers:found.providers,publication_evidence:evidence},{type:'REST_OBSERVATION',observed:found});
+      const readback=verifyReadback(snapshot.data,(await drive.read()).data,new Date().toISOString());
+      return {state:'PUBLISHED',metricool_id:received,url:evidence.public_url,readback};
     }
-    if (['ERROR','FAILED'].includes(provider?.status)) {await persist({state:'FAILED',providers:found.providers});return {state:'FAILED',metricool_id:received};}
+    if (['ERROR','FAILED'].includes(provider?.status)) {await persist({state:'FAILED',providers:found.providers},{type:'REST_OBSERVATION',observed:found});return {state:'FAILED',metricool_id:received};}
+    await persist({}, {type:'REST_OBSERVATION',observed:found??null});
     if(n<9) await wait(15000);
   }
   return {state:'SCHEDULED',metricool_id:received,publication_confirmed:false};
@@ -175,4 +196,5 @@ export async function main() {
   console.log(JSON.stringify(receipt));
 }
 if (process.argv[1] && import.meta.url===new URL(`file://${path.resolve(process.argv[1])}`).href) main().catch(error=>{console.error(error.message);process.exitCode=1;});
+
 

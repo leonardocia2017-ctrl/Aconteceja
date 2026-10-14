@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "check": "node --check src/index.js && node --check src/pipeline.js && node --check src/services/news.js && node --check src/services/editorial.js && node --check src/services/media.js && node --check src/services/publisher.js",
+    "check": "node --check src/index.js && node --check src/pipeline.js && node --check src/services/news.js && node --check src/services/editorial.js && node --check src/services/media.js && node --check src/services/publisher.js && node --check src/services/connector-protocol.js && node --check src/services/production.js",
     "test": "node --test"
   },
   "dependencies": {
@@ -17,4 +17,3 @@
     "node": ">=20"
   }
 }
-
