@@ -3,6 +3,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import { GoogleAuth, UserRefreshClient } from 'google-auth-library';
+import { publicationEvidence, validId } from './connector-protocol.js';
 
 export const REGISTRY = '1sBp-SIonEJ9z8ErHT9VjpgJbXwXVtulh';
 const FOLDER = process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID || '1jsKcEDUAqma4y9WDRpESqUPjTy7f-kZ3';
@@ -117,7 +118,10 @@ export async function run(p,{drive,metricool,materialize,wait=ms=>new Promise(r=
   if (metadata.format!=='jpeg'||metadata.width!==1080||metadata.height!==(p.format==='STORY'?1920:1350)) throw new Error('Dimensões/formato inválidos: esta ponte exige JPG');
   const media=await drive.archive(bytes,`${identity(p)}.${metadata.format==='png'?'png':'jpg'}`,`image/${metadata.format}`);
   const id=identity(p), attemptId=`${process.env.GITHUB_RUN_ID??Date.now()}-${id}`;
-  const record={pauta_id:id,chave:`${id}|${p.format}`,factFingerprint:p.factFingerprint,format:p.format,title:p.title,text:p.caption??'',alt:[p.alt],source_urls:p.sources.map(s=>s.url),state:'READY',media:[{drive_id:media.id,sha256:createHash('sha256').update(bytes).digest('hex'),width:metadata.width,height:metadata.height}],attempts:[]};
+  const archived=(await drive.request(`https://www.googleapis.com/drive/v3/files/${media.id}?alt=media`,{responseType:'arraybuffer'})).data;
+  if(!Buffer.from(archived).equals(bytes)) throw new Error('Arquivo Drive difere do original');
+  const sha=createHash('sha256').update(bytes).digest('hex');
+  const record={pauta_id:id,chave:`${id}|${p.format}`,factFingerprint:p.factFingerprint,format:p.format,title:p.title,text:p.caption??'',alt:[p.alt],source_urls:p.sources.map(s=>s.url),state:'READY',manifest:structuredClone(p),media:[{drive_id:media.id,sha256:sha,archiveReadbackSha:sha,mime:'image/jpeg',width:metadata.width,height:metadata.height}],attempts:[]};
   async function persist(update) {
     const data=structuredClone(snapshot.data);
     let row=data.posts.find(x=>x.chave===record.chave);
@@ -136,14 +140,15 @@ export async function run(p,{drive,metricool,materialize,wait=ms=>new Promise(r=
   let response;
   try {response=await metricool.create(p,url);} catch(error) {await persist({state:'UNKNOWN',error:'Resposta de envio incerta; reconciliar antes de retry'});throw error;}
   const received=response.id??response.data?.id;
-  if (!received) {await persist({state:'UNKNOWN',error:'Resposta sem ID'});throw new Error('UNKNOWN: sem ID');}
+  if (!validId(received)) {await persist({state:'UNKNOWN',error:'Resposta sem ID real'});throw new Error('UNKNOWN: sem ID real');}
   await persist({state:'SCHEDULED',metricool_id:received,uuid:response.uuid??response.data?.uuid??null});
   for(let n=0;n<10;n++) {
     const rows=await metricool.list(), found=rows.find(x=>String(x.id)===String(received));
     const provider=found?.providers?.find(x=>x.network==='instagram');
     if(provider?.status==='PUBLISHED') {
-      await persist({state:'PUBLISHED',providers:found.providers,publication_evidence:{source:'metricool_provider_status',checked_at:new Date().toISOString(),provider_status:'PUBLISHED',public_url:provider.publicUrl??null}});
-      return {state:'PUBLISHED',metricool_id:received,url:provider.publicUrl??null};
+      const evidence=publicationEvidence({...record,metricool_id:received},found,new Date().toISOString());
+      await persist({state:'PUBLISHED',providers:found.providers,publication_evidence:evidence});
+      return {state:'PUBLISHED',metricool_id:received,url:evidence.public_url};
     }
     if (['ERROR','FAILED'].includes(provider?.status)) {await persist({state:'FAILED',providers:found.providers});return {state:'FAILED',metricool_id:received};}
     if(n<9) await wait(15000);
@@ -170,3 +175,4 @@ export async function main() {
   console.log(JSON.stringify(receipt));
 }
 if (process.argv[1] && import.meta.url===new URL(`file://${path.resolve(process.argv[1])}`).href) main().catch(error=>{console.error(error.message);process.exitCode=1;});
+

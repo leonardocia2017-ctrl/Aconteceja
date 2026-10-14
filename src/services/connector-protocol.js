@@ -14,6 +14,69 @@ export function identity(p) {
 export function assertReadback(expected,actual) {
   if(JSON.stringify(expected)!==JSON.stringify(actual)) throw new Error('Readback divergiu; não enviar');
 }
+const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+export function verifyReadback(expected,actual,now) {
+  if(!Number.isFinite(Date.parse(now))) throw new Error('Horário de verificação inválido');
+  assertReadback(expected,actual);
+  return {verified:true,sha256:digest(actual),checked_at:now};
+}
+function requireReadback(registry,receipt) {
+  if(receipt?.verified!==true || receipt.sha256!==digest(registry) || !Number.isFinite(Date.parse(receipt.checked_at)))
+    throw new Error('Readback comprovado do snapshot atual exigido');
+}
+export function publicationEvidence(record,observed,now) {
+  if(!Number.isFinite(Date.parse(now))) throw new Error('Horário de verificação inválido');
+  if(!validId(record.metricool_id) || String(observed?.id)!==String(record.metricool_id)) throw new Error('ID de reconciliação divergiu');
+  const providers=observed.providers?.filter(x=>x.network==='instagram')??[];
+  if(providers.length!==1 || providers[0].status!=='PUBLISHED') throw new Error('Confirmação final do Instagram ausente');
+  const provider=providers[0];
+  let url;
+  try {url=new URL(provider.publicUrl);} catch {throw new Error('URL pública do Instagram ausente ou inválida');}
+  const pattern=record.format==='STORY'?/^\/stories\/aconteceja\/[1-9]\d*\/?$/:
+    record.format==='REEL'?/^\/reel\/[A-Za-z0-9_-]+\/?$/:/^\/p\/[A-Za-z0-9_-]+\/?$/;
+  if(url.protocol!=='https:' || !['instagram.com','www.instagram.com'].includes(url.hostname) || url.port ||
+     url.username || url.password || url.search || url.hash || !pattern.test(url.pathname)) throw new Error('URL pública não corresponde ao formato/conta');
+  if(typeof provider.id==='string' && /^https?:/.test(provider.id)) {
+    const canonical = value => {const u=new URL(value);return u.hostname.replace(/^www\./,'')+u.pathname.replace(/\/$/,'');};
+    if(canonical(provider.id)!==canonical(provider.publicUrl)) throw new Error('URL pública divergiu do ID do provedor');
+  }
+  return {source:'metricool_provider_status',provider_status:'PUBLISHED',metricool_id:record.metricool_id,checked_at:now,public_url:provider.publicUrl};
+}
+export function buildConnectorRequest(input) {
+  const {registry,lock,owner,attemptId,readback,now}=input;
+  if(!Number.isFinite(Date.parse(now))) throw new Error('Horário de verificação inválido');
+  requireReadback(registry,readback);
+  if(lock?.state!=='ACTIVE'||lock.owner!==owner||lock.attemptId!==attemptId) throw new Error('Reserva não pertence à tentativa');
+  const rows=registry.posts.filter(x=>x.owner===owner&&x.attempt_id===attemptId);
+  if(rows.length!==1||rows[0].state!=='SENDING'||rows[0].metricool_id) throw new Error('Envio não autorizado');
+  const row=rows[0], p=row.manifest;
+  validate(p,Date.parse(now));
+  if(!Array.isArray(input.mediaFiles)||input.mediaFiles.length!==1||typeof input.mediaFiles[0]!=='string'||!input.mediaFiles[0]) throw new Error('Uma mídia real exigida');
+  const date=p.publicationDate;
+  return {blogId:'7125091',date,mediaFiles:[...input.mediaFiles],info:JSON.stringify({text:p.caption??'',mediaAltText:[p.alt],providers:[{network:'instagram'}],
+    publicationDate:{dateTime:date,timezone:'America/Sao_Paulo'},autoPublish:true,draft:false,
+    instagramData:{type:p.format,autoPublish:true,isAiGenerated:false}})};
+}
+export async function prepareConnectorRequest(input) {
+  const request=buildConnectorRequest(input);
+  const row=input.registry.posts.find(x=>x.owner===input.owner&&x.attempt_id===input.attemptId);
+  const bytes=await readFile(request.mediaFiles[0]);
+  if(!bytes.length||createHash('sha256').update(bytes).digest('hex')!==row.media?.[0]?.sha256)
+    throw new Error('Mídia de envio divergiu do arquivo validado');
+  return request;
+}
+export function releaseReservation(input) {
+  const {registry,lock,owner,attemptId,readback,now}=input;
+  requireReadback(registry,readback);
+  if(lock?.state!=='ACTIVE'||lock.owner!==owner||lock.attemptId!==attemptId) throw new Error('Reserva não pertence à tentativa');
+  const rows=registry.posts.filter(x=>x.owner===owner&&x.attempt_id===attemptId);
+  if(rows.length!==1||rows[0].state!=='PUBLISHED') throw new Error('Reserva exige publicação confirmada; reconciliar');
+  const row=rows[0];
+  const evidence=publicationEvidence(row,{id:row.metricool_id,providers:row.providers},now);
+  if(row.publication_evidence?.metricool_id!==row.metricool_id||row.publication_evidence?.public_url!==evidence.public_url)
+    throw new Error('Evidência persistida divergiu');
+  return {...lock,state:'IDLE',owner:null,attemptId:null,lastCompleted:{owner,attemptId,metricool_id:row.metricool_id,status:'PUBLISHED',public_url:evidence.public_url}};
+}
 export function claim(lock,owner,attemptId) {
   if(lock.state!=='IDLE' || !owner || !attemptId) throw new Error('Reserva ocupada ou identidade ausente');
   return {...lock,state:'ACTIVE',owner,attemptId};
@@ -26,7 +89,7 @@ export function assertHistory(h,now,publicationDate) {
      Date.parse(h.to)<Date.parse(publicationDate)) throw new Error('Janela de histórico insuficiente');
   if(h.rows.some(row=>!validId(row.id))) throw new Error('Histórico com ID inválido');
 }
-function validId(id) { return (typeof id==='number' && Number.isSafeInteger(id) && id>0) || (typeof id==='string' && /^[1-9]\d*$/.test(id)); }
+export function validId(id) { return (typeof id==='number' && Number.isSafeInteger(id) && id>0) || (typeof id==='string' && /^[1-9]\d*$/.test(id)); }
 function assertNovel(p,registry,rows,ownAttempt) {
   const ids=new Set([identity(p),...p.equivalentPautaIds]);
   for(const row of registry.posts) {
@@ -79,19 +142,27 @@ export function transition(input) {
     if(!m?.drive_id||!m.sha256?.match(/^[a-f0-9]{64}$/)||m.archiveReadbackSha!==m.sha256||
        m.mime!=='image/jpeg'||m.width!==1080||m.height!==(p.format==='STORY'?1920:1350)) throw new Error('Arquivo Drive não comprovado');
     row={pauta_id:id,chave:key,factFingerprint:p.factFingerprint,format:p.format,title:p.title,text:p.caption??'',alt:[p.alt],
-      source_urls:p.sources.map(x=>x.url),state:'READY',route:ROUTE,owner,attempt_id:attemptId,media:[m],manifest:structuredClone(p),attempts:[]};
+      source_urls:p.sources.map(x=>x.url),state:'READY',route:ROUTE,owner,attempt_id:attemptId,media:[m],manifest:structuredClone(p),
+      history_evidence:{ready:structuredClone(h)},readback_evidence:{},attempts:[]};
     data.posts.push(row);
   } else {
     if(!row || row.owner!==owner || row.attempt_id!==attemptId) throw new Error('Tentativa não encontrada');
     if(stage==='sending') {
       if(row.state!=='READY') throw new Error('Envio já iniciado; não reenviar');
+      requireReadback(input.registry,input.readback);
+      assertReadback(row.manifest,p);
       validate(p,now); assertHistory(h,now,p.publicationDate); assertNovel(p,data,h.rows,attemptId);
+      row.history_evidence.sending=structuredClone(h);
+      row.readback_evidence.ready=structuredClone(input.readback);
       row.state='SENDING'; row.attempts.push({attempt_id:attemptId,started_at:input.now,status:'SENDING'});
     } else if(stage==='accepted') {
       if(row.state!=='SENDING') throw new Error('Aceitação fora de SENDING');
+      requireReadback(input.registry,input.readback);
+      row.readback_evidence.sending=structuredClone(input.readback);
       const received=input.response?.id??input.response?.metricoolId??input.response?.data?.id;
       if(!validId(received)) {row.state='UNKNOWN';row.error='Resposta sem ID real';}
       else {row.state='SCHEDULED';row.metricool_id=received;row.uuid=input.response.uuid??input.response.data?.uuid??null;}
+      data.events.push({type:'CONNECTOR_RECEIPT',pauta_id:id,attempt_id:attemptId,owner,at:input.now,response:structuredClone(input.response??{}),metricool_id:validId(received)?received:null});
     } else if(stage==='unknown') {
       if(row.state!=='SENDING') throw new Error('UNKNOWN fora de SENDING');
       row.state='UNKNOWN';row.error='Resultado incerto; reconciliar antes de retry';
@@ -99,9 +170,11 @@ export function transition(input) {
       if(!validId(row.metricool_id)||String(input.observed?.id)!==String(row.metricool_id)) throw new Error('ID de reconciliação divergiu');
       const provider=input.observed.providers?.find(x=>x.network==='instagram');
       if(provider?.status==='PUBLISHED') {
+        const evidence=publicationEvidence(row,input.observed,input.now);
         row.state='PUBLISHED';row.providers=input.observed.providers;
-        row.publication_evidence={source:'metricool_provider_status',provider_status:'PUBLISHED',metricool_id:row.metricool_id,checked_at:input.now,public_url:provider.publicUrl??null};
+        row.publication_evidence=evidence;
       } else if(['ERROR','FAILED'].includes(provider?.status)) {row.state='FAILED';row.providers=input.observed.providers;}
+      data.events.push({type:'CONNECTOR_OBSERVATION',pauta_id:id,attempt_id:attemptId,owner,at:input.now,observed:structuredClone(input.observed)});
       // Absence or a non-final status never proves publication.
     } else throw new Error('Etapa inválida');
   }
@@ -113,10 +186,13 @@ async function main() {
   const [stage,inputPath,outputPath]=process.argv.slice(2);
   const input=JSON.parse(await readFile(inputPath,'utf8'));
   let result;
-  if(stage==='verify') { assertReadback(input.expected,input.actual);result={verified:true}; }
+  if(stage==='verify') result=verifyReadback(input.expected,input.actual,input.now);
   else if(stage==='claim') result=claim(input.lock,input.owner,input.attemptId);
+  else if(stage==='request') result=await prepareConnectorRequest(input);
+  else if(stage==='release') result=releaseReservation(input);
   else result=transition({...input,stage});
   await writeFile(outputPath,JSON.stringify(result,null,2));
 }
 if(process.argv[1] && import.meta.url===new URL('file://'+path.resolve(process.argv[1])).href) main().catch(error=>{console.error(error.message);process.exitCode=1;});
+
 
