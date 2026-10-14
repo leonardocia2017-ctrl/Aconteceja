@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { transition, claim, assertReadback, verifyReadback, buildConnectorRequest, prepareConnectorRequest, prepareConnectorDispatch, releaseReservation } from '../src/services/connector-protocol.js';
+import { transition, claim, assertReadback, verifyReadback, buildConnectorRequest, prepareConnectorRequest, prepareConnectorDispatch, releaseReservation, quarantineReservation, resumeQuarantine } from '../src/services/connector-protocol.js';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -171,6 +171,39 @@ test('wrong IDs and malformed observations are preserved without changing the kn
   assert.equal(out.record.metricool_id,123);assert.equal(out.record.state,'SCHEDULED');assert.equal(out.publicationConfirmed,false);
   assert.deepEqual(out.registry.events.at(-2).observed,observed);
  }
+});
+function quarantined(){const i=uncertain();i.registry.posts[0].connector_response.received_at=now;i.readback=verifyReadback(i.registry,i.registry,now);i.registry=transition({...i,stage:'quarantine'}).registry;i.readback=verifyReadback(i.registry,i.registry,now);i.lock=quarantineReservation(i);return i;}
+test('quarantine frees only the writer and preserves UNKNOWN and the publication history',()=>{
+ const i=quarantined();assert.equal(i.lock.state,'IDLE');assert.equal(i.registry.posts[0].state,'UNKNOWN');
+ assert.equal(i.lock.quarantinedAttempts[0].retry_allowed,false);assert.equal(i.registry.posts[0].metricool_id,undefined);
+ const q=i.registry.events.find(x=>x.type==='CONNECTOR_QUARANTINE');assert.equal(q.connector_response.error_code,'INVALID_ARGUMENT');
+ const next={...i,owner:'other',attemptId:'independent'};next.lock=claim(i.lock,next.owner,next.attemptId,i.registry,i.readback);
+ assert.throws(()=>transition({...next,stage:'ready'}),/equivalente/);
+ next.manifest={...i.manifest,entities:['Another fact'],event:'another event',caption:'Independent report',factFingerprint:'other',alt:'Another image',equivalentPautaIds:['other']};
+ const out=transition({...next,stage:'ready'});assert.equal(out.registry.posts[0].state,'UNKNOWN');assert.equal(out.record.state,'READY');
+});
+test('pending quarantine prevents stale claims, deletion and identity changes',()=>{
+ const i=quarantined();assert.throws(()=>claim(i.lock,'other','new'),/Readback/);
+ for(const mutate of [r=>r.posts.splice(0,1),r=>r.posts[0].factFingerprint='changed',r=>r.posts[0].manifest.alt='changed']) {
+  const registry=structuredClone(i.registry);mutate(registry);const readback=verifyReadback(registry,registry,now);
+  assert.throws(()=>claim(i.lock,'other','new',registry,readback),/Quarentena/);
+ }
+});
+test('sending, missing error receipts and network timeouts cannot be quarantined',()=>{
+ assert.throws(()=>transition({...sending(),stage:'quarantine'}),/Quarentena exige/);
+ for(const response of [{isError:true,error_code:'TIMEOUT',received_at:now},{isError:true,error_code:'INVALID_ARGUMENT'},null]) {
+  const i=uncertain();i.registry.posts[0].connector_response=response;i.readback=verifyReadback(i.registry,i.registry,now);
+  assert.throws(()=>transition({...i,stage:'quarantine'}),/Quarentena exige/);
+ }
+});
+test('quarantine resumes only under an idle writer and cannot authorize retry',()=>{
+ const i=quarantined();const active=resumeQuarantine(i);assert.equal(active.attemptId,i.attemptId);
+ assert.throws(()=>resumeQuarantine({...i,lock:{...i.lock,state:'ACTIVE',owner:'other',attemptId:'other'}}),/retomada/);
+ assert.throws(()=>buildConnectorRequest({...i,lock:active,mediaFiles:['a.jpg']}),/não autorizado/);
+ assert.throws(()=>releaseReservation({...i,lock:active}),/reconciliar/);
+ const rejected=transition({...i,lock:active,stage:'reject',evidence:rejection()});
+ const lock=releaseReservation({...i,lock:active,registry:rejected.registry,readback:verifyReadback(rejected.registry,rejected.registry,now)});
+ assert.equal(lock.quarantinedAttempts.length,0);assert.equal(lock.lastCompleted.status,'REJECTED');
 });
 
 
