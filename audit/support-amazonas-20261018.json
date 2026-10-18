@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-18",
+  "attempt_id": "amazonas-1791925600753",
+  "brandId": "7125091",
+  "source": "Metricool web chat observed directly",
+  "responder": "Bruno, Metricool AI assistant",
+  "provider_response": "Recebi os detalhes e já verifiquei os registros públicos e a documentação. Não encontro nenhum registro público nem ID ligado à referência amazonas-1791925600753; o erro INVALID_ARGUMENT (\"Text '2026-10-13T18:15:00' could not be parsed at index 19\") indica que a API rejeitou o payload por problemas de formatação de data.\n\nPara confirmar a situação, já escalei o caso à equipe técnica, pedindo a confirmação explícita de criação de ID, status e URL ou a confirmação de rejeição sem criação. Assim que tiver uma resposta, informarei você.",
+  "conclusion": "UNKNOWN remains; assistant interpretation of date validation is not definitive provider log confirmation",
+  "definitive_rejection": false,
+  "metricool_id": null,
+  "retry_allowed": false,
+  "actions_taken": [
+    "Sent original steps and error to existing support conversation, without rerunning publication",
+    "Requested technical logs identifying acceptance or rejection of original attempt"
+  ],
+  "planner_access": "Login page; secure authentication not completed",
+  "new_publication_attempted": false
+}
