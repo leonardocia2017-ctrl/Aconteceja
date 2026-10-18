@@ -1,13 +1,19 @@
 {
-  "state": "ACTIVE",
-  "owner": "chat-correcao-mgapp-1791545238526",
-  "attemptId": "mgapp-1791545238526",
+  "state": "IDLE",
+  "owner": null,
+  "attemptId": null,
   "lastCompleted": {
     "owner": "chat-correcao-mgapp-1791545238526",
     "attemptId": "mgapp-1791545238526",
     "metricool_id": 391970200,
     "status": "PUBLISHED",
-    "public_url": "https://www.instagram.com/stories/aconteceja/4004098703632326507"
+    "public_url": "https://www.instagram.com/stories/aconteceja/4004098703632326507",
+    "readback": {
+      "verified": true,
+      "sha256": "64ce7e5840ef475cb562da5562425967f767c2623318bf1c755ed8d270c87341",
+      "checked_at": "2026-10-18T12:05:31.185Z"
+    },
+    "closed_at": "2026-10-18T12:05:31.185Z"
   },
   "quarantinedAttempts": [
     {
