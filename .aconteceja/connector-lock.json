@@ -1,6 +1,6 @@
 {
-  "state": "IDLE",
-  "owner": null,
+  "state": "AUDITING",
+  "owner": "chat-audit-amazonas-1793102327270",
   "attemptId": null,
   "lastCompleted": {
     "owner": "chat-correcao-mgapp-1791545238526",
@@ -31,5 +31,10 @@
         "checked_at": "2026-10-14T12:44:23.346Z"
       }
     }
-  ]
+  ],
+  "audit": {
+    "purpose": "Metadata-only evidence synchronization; no dispatch",
+    "started_at": "2026-10-27T11:58:47.270Z",
+    "publication_allowed": false
+  }
 }
