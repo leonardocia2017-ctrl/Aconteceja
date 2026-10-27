@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-27",
+  "attempt_id": "amazonas-1791925600753",
+  "brandId": "7125091",
+  "scope": "Evidence synchronization and operational readiness; no publication dispatch",
+  "support_archive_imported": true,
+  "support_archive_reference": "audit/support-amazonas-20261018.json",
+  "gmail_check": {
+    "query": "after:2026/10/13 (metricool OR \"amazonas-1791925600753\")",
+    "returned_messages": 0,
+    "provider_conclusion_obtained": false
+  },
+  "registry": {
+    "file_id": "1sBp-SIonEJ9z8ErHT9VjpgJbXwXVtulh",
+    "readback": {
+      "verified": true,
+      "sha256": "78e5926ad2f8be25edfeda997ddce211888355dfdc536030c8dd6fbaa16b1888",
+      "checked_at": "2026-10-27T11:59:43.967Z"
+    },
+    "posts": 63,
+    "events": 182
+  },
+  "amazonas": {
+    "state": "UNKNOWN",
+    "metricool_id": null,
+    "retry_allowed": false,
+    "identity_sha256": "09cd275e85d0e9014ea2ed3c57f0842d3b6ec024b356b20d7487d2b42a7af4ca",
+    "identity_matches_registry_and_lock": true,
+    "definitive_rejection": false
+  },
+  "operational_blocker": {
+    "source": "metricool_getbrandsettings",
+    "isError": true,
+    "error_code": "INVALID_ARGUMENT",
+    "message": "This brand doesn't have any social network connected yet.",
+    "connections_url": "https://app.metricool.com/brands/connections?blogId=7125091"
+  },
+  "missing_evidence": [
+    "Provider request or support reference correlated to original request and brand 7125091",
+    "Actual received date/payload and processing logs: persisted manifest includes -03:00, error omits offset",
+    "Positive acceptance with real Metricool ID, or definitive rejection without creation",
+    "If accepted, final status and corresponding Instagram public URL"
+  ],
+  "support_followup_draft": "Solicitamos conclusão técnica para a marca 7125091, tentativa local amazonas-1791925600753, Story Força Nacional do SUS/Amazonas, agendado para 13/10/2026 às 18h15 America/Sao_Paulo. O erro foi INVALID_ARGUMENT: Text '2026-10-13T18:15:00' could not be parsed at index 19, recebido em 2026-10-13T21:11:51.887Z. O manifesto persistido contém 2026-10-13T18:15:00-03:00. Precisamos do payload recebido, referência da requisição, logs de validação/processamento e confirmação correlacionada: foi criado ID? Se sim, qual ID, status final e URL; se não, confirmar expressamente que não houve aceitação nem criação. Não reenviamos a tentativa. A resposta do assistente de IA de 18/10 não contém logs técnicos.",
+  "support_followup_sent": false,
+  "new_publication_attempted": false,
+  "next_steps": [
+    "Reconnect Instagram to Metricool brand 7125091",
+    "Recheck access and obtain complete history with drafts/pending/published over required interval",
+    "Select and validate independent news and real archived media, claim one writer, run ready/sending/dispatch with readbacks",
+    "Call createScheduledPost once; preserve actual response; confirm publication only with same real ID, final Instagram PUBLISHED and corresponding public URL",
+    "Keep Amazonas quarantined until provider evidence allows resume/recover or reject; never resend while UNKNOWN"
+  ],
+  "audit_lock": {
+    "temporary_state": "AUDITING",
+    "reason": "Serialize metadata-only update; publication transitions reject non-ACTIVE state; no publication reservation created",
+    "restore": "IDLE only after full readback and unchanged protected post fields"
+  }
+}
