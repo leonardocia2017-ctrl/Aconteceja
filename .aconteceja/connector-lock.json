@@ -1,6 +1,6 @@
 {
-  "state": "AUDITING",
-  "owner": "chat-audit-amazonas-1793102327270",
+  "state": "IDLE",
+  "owner": null,
   "attemptId": null,
   "lastCompleted": {
     "owner": "chat-correcao-mgapp-1791545238526",
@@ -32,9 +32,16 @@
       }
     }
   ],
-  "audit": {
-    "purpose": "Metadata-only evidence synchronization; no dispatch",
-    "started_at": "2026-10-27T11:58:47.270Z",
-    "publication_allowed": false
+  "lastAudit": {
+    "owner": "chat-audit-amazonas-1793102327270",
+    "closed_at": "2026-10-27T12:00:50.524Z",
+    "scope": "Metadata-only support evidence sync; no social publication attempted",
+    "registry_readback": {
+      "verified": true,
+      "sha256": "78e5926ad2f8be25edfeda997ddce211888355dfdc536030c8dd6fbaa16b1888",
+      "checked_at": "2026-10-27T11:59:43.967Z"
+    },
+    "evidence": "audit/amazonas-readiness-20261027.json",
+    "operational_blocker": "Metricool reports no social network connected to brand 7125091"
   }
 }
